@@ -52,6 +52,7 @@ export function TranscriptDetailPage() {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [localSummarizing, setLocalSummarizing] = useState(false);
   const [localCleaning, setLocalCleaning] = useState(false);
+  const [showCleaned, setShowCleaned] = useState(true);
 
   useEffect(() => {
     if (transcript && !title) {
@@ -304,9 +305,28 @@ export function TranscriptDetailPage() {
         )}
 
         <div>
-          <h3 className="text-sm font-bold tracking-wider uppercase text-muted-foreground mb-4">Transcript</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold tracking-wider uppercase text-muted-foreground">Transcript</h3>
+            {transcript.cleanedText && (
+              <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5 text-xs">
+                <button
+                  onClick={() => setShowCleaned(false)}
+                  className={`px-2.5 py-1 rounded transition-colors ${!showCleaned ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Original
+                </button>
+                <button
+                  onClick={() => setShowCleaned(true)}
+                  className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${showCleaned ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <Check className="w-3 h-3 text-green-500" />
+                  Cleaned
+                </button>
+              </div>
+            )}
+          </div>
           <div className="font-serif text-lg leading-relaxed text-foreground whitespace-pre-wrap">
-            {transcript.cleanedText || transcript.rawText}
+            {transcript.cleanedText && showCleaned ? transcript.cleanedText : transcript.rawText}
           </div>
         </div>
       </div>
