@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { localSummarize } from "@/lib/local-summarize";
+import { localCleanup } from "@/lib/local-cleanup";
 
 export function TranscriptDetailPage() {
   const params = useParams();
@@ -50,6 +51,7 @@ export function TranscriptDetailPage() {
   const [title, setTitle] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [localSummarizing, setLocalSummarizing] = useState(false);
+  const [localCleaning, setLocalCleaning] = useState(false);
 
   useEffect(() => {
     if (transcript && !title) {
@@ -108,6 +110,29 @@ export function TranscriptDetailPage() {
         toast({ title: `${actionName} failed`, variant: "destructive" });
       }
     });
+  };
+
+  const handleCleanup = () => {
+    if (hasApiKey) {
+      wrapAIMutation(cleanup, "Cleanup");
+      return;
+    }
+    if (!transcript) return;
+    setLocalCleaning(true);
+    const cleanedText = localCleanup(transcript.rawText);
+    updateTranscript.mutate(
+      { id, data: { cleanedText } },
+      {
+        onSuccess: (data) => {
+          queryClient.setQueryData(getGetTranscriptQueryKey(id), data);
+          toast({ title: "Filler words removed" });
+        },
+        onError: () => {
+          toast({ title: "Could not save cleaned text", variant: "destructive" });
+        },
+        onSettled: () => setLocalCleaning(false),
+      }
+    );
   };
 
   const handleSummarize = () => {
@@ -221,18 +246,26 @@ export function TranscriptDetailPage() {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="gap-2"
-              disabled={!hasApiKey || cleanup.isPending || !!transcript.cleanedText}
-              onClick={() => wrapAIMutation(cleanup, "Cleanup")}
+              disabled={cleanup.isPending || localCleaning || !!transcript.cleanedText}
+              onClick={handleCleanup}
             >
-              {cleanup.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : transcript.cleanedText ? <Check className="w-4 h-4 text-green-500" /> : <Scissors className="w-4 h-4 text-primary" />}
+              {(cleanup.isPending || localCleaning) ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : transcript.cleanedText ? (
+                <Check className="w-4 h-4 text-green-500" />
+              ) : (
+                <Scissors className="w-4 h-4 text-primary" />
+              )}
               Clean Filler Words
             </Button>
           </TooltipTrigger>
-          {!hasApiKey && <TooltipContent>Requires OpenAI API Key in Settings</TooltipContent>}
+          {!hasApiKey && !transcript.cleanedText && (
+            <TooltipContent>Regex-based filler removal — runs locally, no API key needed</TooltipContent>
+          )}
         </Tooltip>
 
         <Tooltip>
