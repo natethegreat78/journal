@@ -12,6 +12,8 @@ async function getTranscriber(model: string): Promise<ASRPipeline> {
   if (transcriber && loadedModel === model) return transcriber;
 
   transcriber = await pipeline("automatic-speech-recognition", model, {
+    dtype: "q8",
+    device: "wasm",
     progress_callback: (info: unknown) => {
       self.postMessage({ type: "progress", info });
     },

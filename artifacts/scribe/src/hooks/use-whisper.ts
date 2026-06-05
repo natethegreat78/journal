@@ -10,9 +10,10 @@ export interface WhisperDownloadProgress {
 }
 
 export const WHISPER_MODELS = [
-  { id: "Xenova/whisper-tiny", label: "Tiny — Fastest (~80 MB)", description: "Best for quick notes" },
-  { id: "Xenova/whisper-base", label: "Base — Balanced (~145 MB)", description: "Good accuracy, still fast" },
-  { id: "Xenova/whisper-small", label: "Small — Most accurate (~480 MB)", description: "Best quality, slower first load" },
+  { id: "onnx-community/whisper-tiny.en", label: "Tiny — Fastest (~40 MB, English)", description: "Best for quick notes" },
+  { id: "onnx-community/whisper-tiny", label: "Tiny — Fastest (~40 MB, multilingual)", description: "Best for quick notes" },
+  { id: "onnx-community/whisper-base.en", label: "Base — Balanced (~80 MB, English)", description: "Good accuracy, still fast" },
+  { id: "onnx-community/whisper-base", label: "Base — Balanced (~80 MB, multilingual)", description: "Good accuracy, still fast" },
 ] as const;
 
 export type WhisperModelId = (typeof WHISPER_MODELS)[number]["id"];
@@ -26,7 +27,7 @@ export function getStoredModel(): WhisperModelId {
       return stored as WhisperModelId;
     }
   } catch {}
-  return "Xenova/whisper-tiny";
+  return "onnx-community/whisper-tiny.en";
 }
 
 export function setStoredModel(model: WhisperModelId) {
