@@ -1,0 +1,37 @@
+{
+  "appId": "com.scribe.app",
+  "productName": "Scribe",
+  "copyright": "Copyright © 2025",
+  "mac": {
+    "category": "public.app-category.productivity",
+    "target": [
+      { "target": "dmg", "arch": ["x64"] },
+      { "target": "zip", "arch": ["x64"] }
+    ],
+    "icon": "public/icon.icns"
+  },
+  "directories": {
+    "buildResources": "public",
+    "output": "dist/release"
+  },
+  "files": [
+    "dist/public/**/*",
+    "dist/electron/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/better-sqlite3/build/Release",
+      "to": "better-sqlite3/build/Release",
+      "filter": ["*.node"]
+    }
+  ],
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  },
+  "electronVersion": "33.0.0",
+  "nodeGypRebuild": false,
+  "npmRebuild": true,
+  "buildDependenciesFromSource": false
+}

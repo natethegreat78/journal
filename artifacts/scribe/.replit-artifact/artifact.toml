@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Scribe — Local Transcription App"
+version = "1.0.0"
+id = "artifacts/scribe"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20804
+
+[services.development]
+run = "pnpm --filter @workspace/scribe run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scribe", "run", "build" ]
+publicDir = "artifacts/scribe/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20804"
+BASE_PATH = "/"

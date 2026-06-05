@@ -1,22 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Scribe local transcription app API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: transcripts
+    description: Transcript operations
+  - name: tags
+    description: Tag operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +26,260 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /transcripts:
+    get:
+      operationId: listTranscripts
+      tags: [transcripts]
+      summary: List all transcripts
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of transcripts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transcript"
+    post:
+      operationId: createTranscript
+      tags: [transcripts]
+      summary: Create a new transcript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscriptInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+
+  /transcripts/stats:
+    get:
+      operationId: getTranscriptStats
+      tags: [transcripts]
+      summary: Get aggregate stats across all transcripts
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptStats"
+
+  /transcripts/{id}:
+    get:
+      operationId: getTranscript
+      tags: [transcripts]
+      summary: Get a transcript by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTranscript
+      tags: [transcripts]
+      summary: Update a transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscriptUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+    delete:
+      operationId: deleteTranscript
+      tags: [transcripts]
+      summary: Delete a transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /transcripts/{id}/summarize:
+    post:
+      operationId: summarizeTranscript
+      tags: [transcripts]
+      summary: Generate an AI summary of the transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transcript with summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+
+  /transcripts/{id}/cleanup:
+    post:
+      operationId: cleanupTranscript
+      tags: [transcripts]
+      summary: Clean filler words from the transcript using AI
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transcript with cleaned text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+
+  /transcripts/{id}/autotag:
+    post:
+      operationId: autotagTranscript
+      tags: [transcripts]
+      summary: Auto-generate and assign tags using AI
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transcript with auto-generated tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+
+  /tags:
+    get:
+      operationId: listTags
+      tags: [tags]
+      summary: List all tags
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+    post:
+      operationId: createTag
+      tags: [tags]
+      summary: Create a new tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+
+  /tags/{id}:
+    delete:
+      operationId: deleteTag
+      tags: [tags]
+      summary: Delete a tag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [health]
+      summary: Get app settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+    patch:
+      operationId: updateSettings
+      tags: [health]
+      summary: Update app settings (e.g. OpenAI API key)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +290,136 @@ components:
       required:
         - status
 
+    Transcript:
+      type: object
+      required: [id, title, rawText, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        rawText:
+          type: string
+        cleanedText:
+          type: ["string", "null"]
+        summary:
+          type: ["string", "null"]
+        durationSeconds:
+          type: ["integer", "null"]
+        wordCount:
+          type: integer
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TranscriptInput:
+      type: object
+      required: [rawText]
+      properties:
+        title:
+          type: string
+        rawText:
+          type: string
+        cleanedText:
+          type: string
+        durationSeconds:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+
+    TranscriptUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        rawText:
+          type: string
+        cleanedText:
+          type: string
+        summary:
+          type: string
+        tagIds:
+          type: array
+          items:
+            type: integer
+
+    TranscriptStats:
+      type: object
+      required: [totalCount, totalWords, totalDurationSeconds, topTags]
+      properties:
+        totalCount:
+          type: integer
+        totalWords:
+          type: integer
+        totalDurationSeconds:
+          type: integer
+        topTags:
+          type: array
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+        recentCount:
+          type: integer
+
+    Tag:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+
+    TagInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+
+    ExportResult:
+      type: object
+      required: [content, filename]
+      properties:
+        content:
+          type: string
+        filename:
+          type: string
+
+    Settings:
+      type: object
+      properties:
+        openaiApiKey:
+          type: ["string", "null"]
+        openaiModel:
+          type: string
+        storageDir:
+          type: string
+
+    SettingsUpdate:
+      type: object
+      properties:
+        openaiApiKey:
+          type: string
+        openaiModel:
+          type: string
+        storageDir:
+          type: string
