@@ -1,9 +1,12 @@
 import { Router } from "express";
+import multer from "multer";
+import FormData from "form-data";
 import { db, transcriptsTable, tagsTable, transcriptTagsTable, settingsTable } from "@workspace/db";
 import { eq, ilike, or, inArray, sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 async function getTranscriptWithTags(id: number) {
   const transcript = await db.select().from(transcriptsTable).where(eq(transcriptsTable.id, id)).limit(1);
@@ -165,6 +168,39 @@ router.get("/transcripts/stats", async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "Error fetching stats");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/transcripts/transcribe", upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No audio file provided" });
+
+    const apiKey = await getSetting("openaiApiKey");
+    if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add one in Settings." });
+
+    const form = new FormData();
+    const ext = req.file.mimetype.includes("webm") ? "webm" : req.file.mimetype.includes("mp4") ? "mp4" : "webm";
+    form.append("file", req.file.buffer, { filename: `recording.${ext}`, contentType: req.file.mimetype });
+    form.append("model", "whisper-1");
+    form.append("response_format", "text");
+
+    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
+      body: form.getBuffer(),
+    });
+
+    if (!whisperRes.ok) {
+      const errText = await whisperRes.text();
+      logger.error({ status: whisperRes.status, errText }, "Whisper API error");
+      return res.status(502).json({ error: `Transcription failed: ${errText}` });
+    }
+
+    const text = (await whisperRes.text()).trim();
+    res.json({ text });
+  } catch (err) {
+    logger.error({ err }, "Error transcribing audio");
+    res.status(500).json({ error: String(err) });
   }
 });
 

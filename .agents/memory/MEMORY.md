@@ -1,0 +1,1 @@
+- [Web Speech API in Replit](web-speech-api-replit.md) — Chrome's built-in SpeechRecognition fails with "network" error in Replit's proxied iframe; replaced with MediaRecorder + OpenAI Whisper API.
