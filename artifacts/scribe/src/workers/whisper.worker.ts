@@ -3,6 +3,10 @@ import { pipeline, env } from "@huggingface/transformers";
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
+// Serve ONNX Runtime WASM files locally instead of fetching from CDN.
+// This avoids network failures in restricted environments (e.g. Replit preview).
+(env.backends.onnx.wasm as { wasmPaths?: string }).wasmPaths = "/ort/";
+
 type ASRPipeline = Awaited<ReturnType<typeof pipeline<"automatic-speech-recognition">>>;
 
 let transcriber: ASRPipeline | null = null;
@@ -12,7 +16,7 @@ async function getTranscriber(model: string): Promise<ASRPipeline> {
   if (transcriber && loadedModel === model) return transcriber;
 
   transcriber = await pipeline("automatic-speech-recognition", model, {
-    dtype: "q8",
+    dtype: "fp32",
     device: "wasm",
     progress_callback: (info: unknown) => {
       self.postMessage({ type: "progress", info });
