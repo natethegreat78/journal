@@ -1,1 +1,2 @@
-- [Web Speech API in Replit](web-speech-api-replit.md) — Chrome's built-in SpeechRecognition fails with "network" error in Replit's proxied iframe; replaced with MediaRecorder + OpenAI Whisper API.
+- [Web Speech API in Replit](web-speech-api-replit.md) — Chrome's built-in SpeechRecognition fails with "network" error in Replit's proxied iframe; always use MediaRecorder hook instead.
+- [Local Whisper transcription](local-whisper.md) — transcription runs in-browser via @huggingface/transformers Web Worker; no API key needed; audio decoded to 16kHz Float32Array in main thread before transfer to worker.

@@ -12,7 +12,9 @@ interface UseMediaRecorderResult {
   reset: () => void;
 }
 
-export function useMediaRecorder(): UseMediaRecorderResult {
+export function useMediaRecorder(
+  transcribeFn: (blob: Blob) => Promise<string>
+): UseMediaRecorderResult {
   const [state, setState] = useState<RecorderState>("idle");
   const [duration, setDuration] = useState(0);
   const [transcript, setTranscript] = useState("");
@@ -23,6 +25,7 @@ export function useMediaRecorder(): UseMediaRecorderResult {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const durationRef = useRef(0);
+  const mimeTypeRef = useRef("");
 
   const start = useCallback(async () => {
     setError(null);
@@ -55,6 +58,7 @@ export function useMediaRecorder(): UseMediaRecorderResult {
         ? "audio/webm"
         : "audio/mp4";
 
+    mimeTypeRef.current = mimeType;
     const recorder = new MediaRecorder(stream, { mimeType });
     mediaRecorderRef.current = recorder;
 
@@ -66,7 +70,7 @@ export function useMediaRecorder(): UseMediaRecorderResult {
       stream.getTracks().forEach((t) => t.stop());
       if (timerRef.current) clearInterval(timerRef.current);
 
-      const audioBlob = new Blob(chunksRef.current, { type: mimeType });
+      const audioBlob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
       if (audioBlob.size < 1000) {
         setError("Recording was too short. Please speak for at least a second.");
         setState("error");
@@ -75,22 +79,8 @@ export function useMediaRecorder(): UseMediaRecorderResult {
 
       setState("transcribing");
       try {
-        const formData = new FormData();
-        const ext = mimeType.includes("webm") ? "webm" : "mp4";
-        formData.append("audio", audioBlob, `recording.${ext}`);
-
-        const res = await fetch("/api/transcripts/transcribe", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(body.error ?? `Server error ${res.status}`);
-        }
-
-        const data = await res.json() as { text: string };
-        setTranscript(data.text);
+        const text = await transcribeFn(audioBlob);
+        setTranscript(text);
         setState("done");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -106,7 +96,7 @@ export function useMediaRecorder(): UseMediaRecorderResult {
       durationRef.current += 1;
       setDuration(durationRef.current);
     }, 1000);
-  }, []);
+  }, [transcribeFn]);
 
   const stop = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {

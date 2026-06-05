@@ -1,11 +1,13 @@
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { useCreateTranscript, useGetSettings, getGetSettingsQueryKey } from "@workspace/api-client-react";
+import { useWhisper, getStoredModel, WHISPER_MODELS } from "@/hooks/use-whisper";
+import { useCreateTranscript } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, Square, Loader2, AlertCircle, RotateCcw, Save } from "lucide-react";
+import { Mic, Square, Loader2, AlertCircle, RotateCcw, Save, Download } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 function formatDuration(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -14,15 +16,11 @@ function formatDuration(seconds: number) {
 }
 
 export function RecorderPage() {
-  const { state, duration, transcript, error, start, stop, reset } = useMediaRecorder();
+  const [model] = useState(getStoredModel);
+  const { modelState, downloadProgress, modelError, transcribe } = useWhisper(model);
+  const { state, duration, transcript, error, start, stop, reset } = useMediaRecorder(transcribe);
   const [, setLocation] = useLocation();
   const createTranscript = useCreateTranscript();
-
-  const { data: settings } = useGetSettings({
-    query: { queryKey: getGetSettingsQueryKey() },
-  });
-
-  const hasApiKey = !!(settings?.groqApiKey && settings.groqApiKey !== "");
 
   const handleSave = () => {
     if (!transcript.trim()) return;
@@ -39,6 +37,8 @@ export function RecorderPage() {
   };
 
   const wordCount = transcript.trim().split(/\s+/).filter((w) => w.length > 0).length;
+  const modelLabel = WHISPER_MODELS.find((m) => m.id === model)?.label ?? model;
+  const isModelReady = modelState === "ready";
 
   return (
     <div className="flex flex-col h-full py-12 px-8">
@@ -47,33 +47,75 @@ export function RecorderPage() {
           What&apos;s on your mind?
         </h1>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          {state === "idle" && "Press record and start speaking. Your audio is captured locally."}
+          {state === "idle" && modelState === "loading" && "Loading local Whisper model…"}
+          {state === "idle" && modelState === "ready" && "Press record and start speaking. Everything stays on this device."}
+          {state === "idle" && modelState === "error" && "Could not load transcription model."}
           {state === "recording" && "Recording — speak naturally. Your audio stays on this device."}
-          {state === "transcribing" && "Transcribing with OpenAI Whisper..."}
+          {state === "transcribing" && "Transcribing locally with Whisper…"}
           {state === "done" && "Transcription complete. Review and save."}
           {state === "error" && "Something went wrong."}
         </p>
       </div>
 
       <AnimatePresence>
-        {!hasApiKey && state === "idle" && (
+        {modelState === "loading" && state === "idle" && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             className="mb-6 max-w-2xl mx-auto w-full"
           >
-            <Alert className="border-amber-500/40 bg-amber-50 dark:bg-amber-950/20">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-800 dark:text-amber-300">
-                An OpenAI API key is required to transcribe recordings. Add one in{" "}
-                <button
-                  onClick={() => setLocation("/settings")}
-                  className="underline font-medium hover:no-underline"
-                >
-                  Settings
-                </button>
-                .
+            <Card className="p-5 bg-card/50 border-border/50 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Download className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    Loading Whisper model
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {modelLabel} — downloading and caching locally for offline use
+                  </p>
+                  {downloadProgress && downloadProgress.total > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <motion.div
+                          className="h-full bg-primary rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${downloadProgress.progress}%` }}
+                          transition={{ ease: "linear" }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {Math.round(downloadProgress.progress)}% — {downloadProgress.file}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <motion.div
+                        className="h-full bg-primary/60 rounded-full"
+                        animate={{ x: ["-100%", "200%"] }}
+                        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                        style={{ width: "40%" }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        {modelState === "error" && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-6 max-w-2xl mx-auto w-full"
+          >
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Could not load model: {modelError}. Try refreshing the page.
               </AlertDescription>
             </Alert>
           </motion.div>
@@ -97,16 +139,25 @@ export function RecorderPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="flex-1 flex items-center justify-center"
+              className="flex-1 flex flex-col items-center justify-center gap-5"
             >
               <button
                 data-testid="button-record"
                 onClick={start}
-                disabled={!hasApiKey}
+                disabled={!isModelReady}
                 className="w-32 h-32 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center shadow-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                <Mic className="w-12 h-12" />
+                {modelState === "loading" ? (
+                  <Loader2 className="w-10 h-10 animate-spin" />
+                ) : (
+                  <Mic className="w-12 h-12" />
+                )}
               </button>
+              {isModelReady && (
+                <p className="text-xs text-muted-foreground">
+                  Transcription runs locally · no internet required
+                </p>
+              )}
             </motion.div>
           )}
 
@@ -166,7 +217,7 @@ export function RecorderPage() {
             >
               <Loader2 className="w-12 h-12 animate-spin text-primary" />
               <p className="text-muted-foreground text-sm">
-                Sending audio to OpenAI Whisper for transcription...
+                Transcribing locally with Whisper — audio never leaves your device
               </p>
             </motion.div>
           )}

@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink } from "lucide-react";
+import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink, Mic } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { WHISPER_MODELS, getStoredModel, setStoredModel, type WhisperModelId } from "@/hooks/use-whisper";
 
 export function SettingsPage() {
   const { data: settings, isLoading } = useGetSettings({
@@ -18,23 +19,21 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [formData, setFormData] = useState({
-    groqApiKey: "",
-    groqModel: "llama-3.3-70b-versatile",
-  });
+  const [groqApiKey, setGroqApiKey] = useState("");
+  const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
+  const [whisperModel, setWhisperModel] = useState<WhisperModelId>(getStoredModel);
 
   useEffect(() => {
     if (settings) {
-      setFormData({
-        groqApiKey: settings.groqApiKey || "",
-        groqModel: settings.groqModel || "llama-3.3-70b-versatile",
-      });
+      setGroqApiKey(settings.groqApiKey || "");
+      setGroqModel(settings.groqModel || "llama-3.3-70b-versatile");
     }
   }, [settings]);
 
   const handleSave = () => {
+    setStoredModel(whisperModel);
     updateSettings.mutate(
-      { data: formData },
+      { data: { groqApiKey, groqModel } },
       {
         onSuccess: (data) => {
           queryClient.setQueryData(getGetSettingsQueryKey(), data);
@@ -59,25 +58,62 @@ export function SettingsPage() {
     <div className="p-8 max-w-3xl">
       <div className="mb-8">
         <h1 className="text-3xl font-serif font-bold text-foreground mb-2">Settings</h1>
-        <p className="text-muted-foreground">Configure your AI provider and local storage.</p>
+        <p className="text-muted-foreground">Transcription is always local. AI features are optional.</p>
       </div>
 
       <div className="space-y-6">
         <Card className="bg-card/50 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-primary" />
-              AI Features — Powered by Groq
+              <Mic className="w-5 h-5 text-primary" />
+              Transcription — Runs Locally
             </CardTitle>
             <CardDescription>
-              Groq provides free, fast AI for transcription, summarization, filler word cleanup, and auto-tagging.{" "}
+              Whisper runs entirely in your browser using WebAssembly. Audio never leaves your device.
+              The model is downloaded once and cached for offline use.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Whisper Model</Label>
+              <Select
+                value={whisperModel}
+                onValueChange={(val) => setWhisperModel(val as WhisperModelId)}
+              >
+                <SelectTrigger className="bg-background" data-testid="select-whisper-model">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WHISPER_MODELS.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Changing the model triggers a one-time download. All models are then cached in your browser.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50 shadow-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-primary" />
+              AI Features — Optional, Powered by Groq
+            </CardTitle>
+            <CardDescription>
+              Summarization, filler word cleanup, and auto-tagging use Groq's free API.
+              Transcription works without this key.{" "}
               <a
                 href="https://console.groq.com/keys"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-primary underline hover:no-underline"
               >
-                Get a free API key at console.groq.com
+                Get a free key at console.groq.com
                 <ExternalLink className="w-3 h-3" />
               </a>
             </CardDescription>
@@ -93,21 +129,18 @@ export function SettingsPage() {
                 data-testid="input-groq-api-key"
                 type="password"
                 placeholder="gsk_..."
-                value={formData.groqApiKey}
-                onChange={(e) => setFormData(prev => ({ ...prev, groqApiKey: e.target.value }))}
+                value={groqApiKey}
+                onChange={(e) => setGroqApiKey(e.target.value)}
                 className="font-mono bg-background"
               />
               <p className="text-xs text-muted-foreground">
-                Your API key is stored locally. It is only used to call Groq — it never leaves your machine except for AI requests.
+                Stored locally. Only used for summarization, cleanup, and tagging calls to Groq.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>AI Model (for summaries, cleanup, tagging)</Label>
-              <Select
-                value={formData.groqModel}
-                onValueChange={(val) => setFormData(prev => ({ ...prev, groqModel: val }))}
-              >
+              <Label>AI Model</Label>
+              <Select value={groqModel} onValueChange={setGroqModel}>
                 <SelectTrigger className="bg-background" data-testid="select-groq-model">
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
@@ -118,9 +151,6 @@ export function SettingsPage() {
                   <SelectItem value="mixtral-8x7b-32768">Mixtral 8x7B — Long context</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                Transcription always uses Whisper Large v3 (Groq-hosted, extremely accurate).
-              </p>
             </div>
 
             <Button
