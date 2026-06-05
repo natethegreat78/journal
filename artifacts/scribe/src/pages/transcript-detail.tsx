@@ -14,14 +14,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { 
   ArrowLeft, Download, Trash2, Wand2, Scissors, 
-  Tags as TagsIcon, Loader2, Clock, Check 
+  Tags as TagsIcon, Loader2, Clock, Check, Cpu
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { localSummarize } from "@/lib/local-summarize";
 
 export function TranscriptDetailPage() {
   const params = useParams();
@@ -47,6 +49,7 @@ export function TranscriptDetailPage() {
 
   const [title, setTitle] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const [localSummarizing, setLocalSummarizing] = useState(false);
 
   useEffect(() => {
     if (transcript && !title) {
@@ -105,6 +108,30 @@ export function TranscriptDetailPage() {
         toast({ title: `${actionName} failed`, variant: "destructive" });
       }
     });
+  };
+
+  const handleSummarize = () => {
+    if (hasApiKey) {
+      wrapAIMutation(summarize, "Summary");
+      return;
+    }
+    if (!transcript) return;
+    setLocalSummarizing(true);
+    const text = transcript.cleanedText ?? transcript.rawText;
+    const summary = localSummarize(text);
+    updateTranscript.mutate(
+      { id, data: { summary } },
+      {
+        onSuccess: (data) => {
+          queryClient.setQueryData(getGetTranscriptQueryKey(id), data);
+          toast({ title: "Local summary generated" });
+        },
+        onError: () => {
+          toast({ title: "Could not save summary", variant: "destructive" });
+        },
+        onSettled: () => setLocalSummarizing(false),
+      }
+    );
   };
 
   if (isLoading || !transcript) {
@@ -174,14 +201,22 @@ export function TranscriptDetailPage() {
               variant="ghost" 
               size="sm" 
               className="gap-2"
-              disabled={!hasApiKey || summarize.isPending}
-              onClick={() => wrapAIMutation(summarize, "Summary")}
+              disabled={summarize.isPending || localSummarizing}
+              onClick={handleSummarize}
             >
-              {summarize.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4 text-primary" />}
+              {(summarize.isPending || localSummarizing) ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : hasApiKey ? (
+                <Wand2 className="w-4 h-4 text-primary" />
+              ) : (
+                <Cpu className="w-4 h-4 text-primary" />
+              )}
               Summarize
             </Button>
           </TooltipTrigger>
-          {!hasApiKey && <TooltipContent>Requires OpenAI API Key in Settings</TooltipContent>}
+          {!hasApiKey && (
+            <TooltipContent>Extractive summary — runs locally, no API key needed</TooltipContent>
+          )}
         </Tooltip>
 
         <Tooltip>
@@ -221,7 +256,15 @@ export function TranscriptDetailPage() {
         {transcript.summary && (
           <Card className="bg-primary/5 border-primary/20 shadow-none">
             <div className="p-6">
-              <h3 className="text-sm font-bold tracking-wider uppercase text-primary mb-3">Summary</h3>
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-bold tracking-wider uppercase text-primary">Summary</h3>
+                {!hasApiKey && (
+                  <Badge variant="outline" className="text-xs gap-1 text-muted-foreground border-border/60 py-0">
+                    <Cpu className="w-3 h-3" />
+                    local
+                  </Badge>
+                )}
+              </div>
               <p className="text-foreground leading-relaxed">{transcript.summary}</p>
             </div>
           </Card>
