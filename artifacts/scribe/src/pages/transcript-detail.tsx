@@ -37,7 +37,7 @@ export function TranscriptDetailPage() {
   const { data: settings } = useGetSettings({
     query: { queryKey: getGetSettingsQueryKey() }
   });
-  const hasApiKey = !!settings?.openaiApiKey;
+  const hasApiKey = !!settings?.groqApiKey;
 
   const updateTranscript = useUpdateTranscript();
   const deleteTranscript = useDeleteTranscript();

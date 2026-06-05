@@ -104,7 +104,7 @@ function upsertSetting(db: Database.Database, key: string, value: string) {
 
 async function callOpenAI(apiKey: string, model: string, systemPrompt: string, userContent: string): Promise<string> {
   const { default: fetch } = await import("node-fetch");
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
@@ -229,9 +229,9 @@ export function createServer(): Promise<number> {
       const id = parseInt(req.params.id);
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
-      const apiKey = getSetting(db, "openaiApiKey");
+      const apiKey = getSetting(db, "groqApiKey");
       if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
-      const model = getSetting(db, "openaiModel") ?? "gpt-4o-mini";
+      const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
         const summary = await callOpenAI(apiKey, model, "You are a concise summarizer. Produce a clear, well-structured summary of the transcript in 3-5 sentences. Return only the summary text.", t.cleanedText ?? t.rawText);
         db.prepare("UPDATE transcripts SET summary = ?, updated_at = datetime('now') WHERE id = ?").run(summary, id);
@@ -246,9 +246,9 @@ export function createServer(): Promise<number> {
       const id = parseInt(req.params.id);
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
-      const apiKey = getSetting(db, "openaiApiKey");
+      const apiKey = getSetting(db, "groqApiKey");
       if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
-      const model = getSetting(db, "openaiModel") ?? "gpt-4o-mini";
+      const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
         const cleaned = await callOpenAI(apiKey, model,
           "Remove filler words (um, uh, like, you know, basically, literally, actually, right, so, well, I mean, kind of, sort of) and fix minor grammatical issues. Preserve all substantive content and the speaker's tone. Return only the cleaned text.",
@@ -265,9 +265,9 @@ export function createServer(): Promise<number> {
       const id = parseInt(req.params.id);
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
-      const apiKey = getSetting(db, "openaiApiKey");
+      const apiKey = getSetting(db, "groqApiKey");
       if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
-      const model = getSetting(db, "openaiModel") ?? "gpt-4o-mini";
+      const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
         const tagsJson = await callOpenAI(apiKey, model,
           "Return 3-6 relevant tags as a JSON array of short lowercase strings (1-3 words each). Return only valid JSON array, no other text. Example: [\"meeting notes\",\"project planning\"]",
@@ -307,22 +307,22 @@ export function createServer(): Promise<number> {
 
     // Settings
     expressApp.get("/api/settings", (_req, res) => {
-      const apiKey = getSetting(db, "openaiApiKey");
+      const apiKey = getSetting(db, "groqApiKey");
       res.json({
-        openaiApiKey: apiKey ? "****" + apiKey.slice(-4) : null,
-        openaiModel: getSetting(db, "openaiModel") ?? "gpt-4o-mini",
+        groqApiKey: apiKey ? "****" + apiKey.slice(-4) : null,
+        groqModel: getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile",
         storageDir: getDataDir(),
       });
     });
     expressApp.patch("/api/settings", (req, res) => {
-      const { openaiApiKey, openaiModel, storageDir } = req.body;
-      if (openaiApiKey !== undefined) upsertSetting(db, "openaiApiKey", openaiApiKey);
-      if (openaiModel !== undefined) upsertSetting(db, "openaiModel", openaiModel);
+      const { groqApiKey, groqModel, storageDir } = req.body;
+      if (groqApiKey !== undefined) upsertSetting(db, "groqApiKey", groqApiKey);
+      if (groqModel !== undefined) upsertSetting(db, "groqModel", groqModel);
       if (storageDir !== undefined) upsertSetting(db, "storageDir", storageDir);
-      const apiKey = getSetting(db, "openaiApiKey");
+      const apiKey = getSetting(db, "groqApiKey");
       res.json({
-        openaiApiKey: apiKey ? "****" + apiKey.slice(-4) : null,
-        openaiModel: getSetting(db, "openaiModel") ?? "gpt-4o-mini",
+        groqApiKey: apiKey ? "****" + apiKey.slice(-4) : null,
+        groqModel: getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile",
         storageDir: getDataDir(),
       });
     });

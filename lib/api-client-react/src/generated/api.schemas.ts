@@ -72,14 +72,14 @@ export interface ExportResult {
 
 export interface Settings {
   /** @nullable */
-  openaiApiKey?: string | null;
-  openaiModel?: string;
+  groqApiKey?: string | null;
+  groqModel?: string;
   storageDir?: string;
 }
 
 export interface SettingsUpdate {
-  openaiApiKey?: string;
-  openaiModel?: string;
+  groqApiKey?: string;
+  groqModel?: string;
   storageDir?: string;
 }
 

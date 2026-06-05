@@ -245,8 +245,8 @@ export const DeleteTagParams = zod.object({
  * @summary Get app settings
  */
 export const GetSettingsResponse = zod.object({
-  "openaiApiKey": zod.string().nullish(),
-  "openaiModel": zod.string().optional(),
+  "groqApiKey": zod.string().nullish(),
+  "groqModel": zod.string().optional(),
   "storageDir": zod.string().optional()
 })
 
@@ -255,14 +255,14 @@ export const GetSettingsResponse = zod.object({
  * @summary Update app settings (e.g. OpenAI API key)
  */
 export const UpdateSettingsBody = zod.object({
-  "openaiApiKey": zod.string().optional(),
-  "openaiModel": zod.string().optional(),
+  "groqApiKey": zod.string().optional(),
+  "groqModel": zod.string().optional(),
   "storageDir": zod.string().optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
-  "openaiApiKey": zod.string().nullish(),
-  "openaiModel": zod.string().optional(),
+  "groqApiKey": zod.string().nullish(),
+  "groqModel": zod.string().optional(),
   "storageDir": zod.string().optional()
 })
 

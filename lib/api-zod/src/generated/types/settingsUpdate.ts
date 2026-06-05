@@ -7,7 +7,7 @@
  */
 
 export interface SettingsUpdate {
-  openaiApiKey?: string;
-  openaiModel?: string;
+  groqApiKey?: string;
+  groqModel?: string;
   storageDir?: string;
 }

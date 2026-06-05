@@ -8,7 +8,7 @@
 
 export interface Settings {
   /** @nullable */
-  openaiApiKey?: string | null;
-  openaiModel?: string;
+  groqApiKey?: string | null;
+  groqModel?: string;
   storageDir?: string;
 }

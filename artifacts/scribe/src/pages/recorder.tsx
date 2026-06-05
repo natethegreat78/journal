@@ -22,7 +22,7 @@ export function RecorderPage() {
     query: { queryKey: getGetSettingsQueryKey() },
   });
 
-  const hasApiKey = !!(settings?.openaiApiKey && settings.openaiApiKey !== "");
+  const hasApiKey = !!(settings?.groqApiKey && settings.groqApiKey !== "");
 
   const handleSave = () => {
     if (!transcript.trim()) return;

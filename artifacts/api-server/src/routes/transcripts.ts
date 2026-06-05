@@ -24,8 +24,8 @@ async function getSetting(key: string): Promise<string | null> {
   return rows[0]?.value ?? null;
 }
 
-async function callOpenAI(apiKey: string, model: string, systemPrompt: string, userContent: string): Promise<string> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+async function callGroq(apiKey: string, model: string, systemPrompt: string, userContent: string): Promise<string> {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,7 +42,7 @@ async function callOpenAI(apiKey: string, model: string, systemPrompt: string, u
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`OpenAI API error ${res.status}: ${err}`);
+    throw new Error(`Groq API error ${res.status}: ${err}`);
   }
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
   return json.choices[0]?.message?.content?.trim() ?? "";
@@ -175,16 +175,16 @@ router.post("/transcripts/transcribe", upload.single("audio"), async (req, res) 
   try {
     if (!req.file) return res.status(400).json({ error: "No audio file provided" });
 
-    const apiKey = await getSetting("openaiApiKey");
+    const apiKey = await getSetting("groqApiKey");
     if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add one in Settings." });
 
     const form = new FormData();
     const ext = req.file.mimetype.includes("webm") ? "webm" : req.file.mimetype.includes("mp4") ? "mp4" : "webm";
     form.append("file", req.file.buffer, { filename: `recording.${ext}`, contentType: req.file.mimetype });
-    form.append("model", "whisper-1");
+    form.append("model", "whisper-large-v3");
     form.append("response_format", "text");
 
-    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    const whisperRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
       body: form.getBuffer(),
@@ -273,13 +273,13 @@ router.post("/transcripts/:id/summarize", async (req, res) => {
     const transcript = await getTranscriptWithTags(id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
 
-    const apiKey = await getSetting("openaiApiKey");
+    const apiKey = await getSetting("groqApiKey");
     if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
 
-    const model = (await getSetting("openaiModel")) ?? "gpt-4o-mini";
+    const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
     const text = transcript.cleanedText ?? transcript.rawText;
 
-    const summary = await callOpenAI(
+    const summary = await callGroq(
       apiKey,
       model,
       "You are a concise summarizer. Produce a clear, well-structured summary of the transcript provided. Keep it to 3-5 sentences. Do not include filler commentary.",
@@ -301,12 +301,12 @@ router.post("/transcripts/:id/cleanup", async (req, res) => {
     const transcript = await getTranscriptWithTags(id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
 
-    const apiKey = await getSetting("openaiApiKey");
+    const apiKey = await getSetting("groqApiKey");
     if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
 
-    const model = (await getSetting("openaiModel")) ?? "gpt-4o-mini";
+    const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
 
-    const cleanedText = await callOpenAI(
+    const cleanedText = await callGroq(
       apiKey,
       model,
       `You are a transcript editor. Remove filler words and verbal tics (um, uh, like, you know, basically, literally, actually, right, so, well, I mean, kind of, sort of) and fix minor grammatical issues caused by speaking. Preserve the speaker's original meaning, tone, and all substantive content. Return only the cleaned transcript text — no commentary, no preamble.`,
@@ -328,13 +328,13 @@ router.post("/transcripts/:id/autotag", async (req, res) => {
     const transcript = await getTranscriptWithTags(id);
     if (!transcript) return res.status(404).json({ error: "Not found" });
 
-    const apiKey = await getSetting("openaiApiKey");
+    const apiKey = await getSetting("groqApiKey");
     if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
 
-    const model = (await getSetting("openaiModel")) ?? "gpt-4o-mini";
+    const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
     const text = transcript.cleanedText ?? transcript.rawText;
 
-    const tagsJson = await callOpenAI(
+    const tagsJson = await callGroq(
       apiKey,
       model,
       `You are a tagging assistant. Analyze the transcript and return 3-6 relevant tags as a JSON array of strings. Tags should be short (1-3 words), lowercase, and capture the main topics, themes, or context of the transcript. Return only valid JSON array, no other text. Example: ["meeting notes", "project planning", "budget"]`,

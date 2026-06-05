@@ -1,11 +1,8 @@
 import { Router } from "express";
 import { db, settingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const router = Router();
-
-const SETTING_KEYS = ["openaiApiKey", "openaiModel", "storageDir"] as const;
 
 async function getAllSettings() {
   const rows = await db.select().from(settingsTable);
@@ -14,8 +11,8 @@ async function getAllSettings() {
     map[row.key] = row.value ?? null;
   }
   return {
-    openaiApiKey: map["openaiApiKey"] ? "****" + map["openaiApiKey"].slice(-4) : null,
-    openaiModel: map["openaiModel"] ?? "gpt-4o-mini",
+    groqApiKey: map["groqApiKey"] ? "****" + map["groqApiKey"].slice(-4) : null,
+    groqModel: map["groqModel"] ?? "llama-3.3-70b-versatile",
     storageDir: map["storageDir"] ?? "local",
   };
 }
@@ -28,8 +25,7 @@ async function upsertSetting(key: string, value: string) {
 
 router.get("/settings", async (_req, res) => {
   try {
-    const settings = await getAllSettings();
-    res.json(settings);
+    res.json(await getAllSettings());
   } catch (err) {
     logger.error({ err }, "Error fetching settings");
     res.status(500).json({ error: "Internal server error" });
@@ -38,20 +34,11 @@ router.get("/settings", async (_req, res) => {
 
 router.patch("/settings", async (req, res) => {
   try {
-    const body = req.body as { openaiApiKey?: string; openaiModel?: string; storageDir?: string };
-
-    if (body.openaiApiKey !== undefined) {
-      await upsertSetting("openaiApiKey", body.openaiApiKey);
-    }
-    if (body.openaiModel !== undefined) {
-      await upsertSetting("openaiModel", body.openaiModel);
-    }
-    if (body.storageDir !== undefined) {
-      await upsertSetting("storageDir", body.storageDir);
-    }
-
-    const settings = await getAllSettings();
-    res.json(settings);
+    const body = req.body as { groqApiKey?: string; groqModel?: string; storageDir?: string };
+    if (body.groqApiKey !== undefined) await upsertSetting("groqApiKey", body.groqApiKey);
+    if (body.groqModel !== undefined) await upsertSetting("groqModel", body.groqModel);
+    if (body.storageDir !== undefined) await upsertSetting("storageDir", body.storageDir);
+    res.json(await getAllSettings());
   } catch (err) {
     logger.error({ err }, "Error updating settings");
     res.status(500).json({ error: "Internal server error" });

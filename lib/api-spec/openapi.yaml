@@ -407,9 +407,9 @@ components:
     Settings:
       type: object
       properties:
-        openaiApiKey:
+        groqApiKey:
           type: ["string", "null"]
-        openaiModel:
+        groqModel:
           type: string
         storageDir:
           type: string
@@ -417,9 +417,9 @@ components:
     SettingsUpdate:
       type: object
       properties:
-        openaiApiKey:
+        groqApiKey:
           type: string
-        openaiModel:
+        groqModel:
           type: string
         storageDir:
           type: string
