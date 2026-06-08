@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Scribe — Local Transcription App"
+title = "Journal — Local Transcription App"
 version = "1.0.0"
 id = "artifacts/scribe"
 router = "path"

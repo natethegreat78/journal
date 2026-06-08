@@ -20,7 +20,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <aside className="w-64 border-r border-border/50 flex flex-col bg-card/50 backdrop-blur-sm">
         <div className="p-6">
           <Link href="/" className="flex items-center gap-2 font-serif text-2xl font-bold tracking-tight text-primary">
-            Scribe.
+            Journal.
           </Link>
         </div>
 
