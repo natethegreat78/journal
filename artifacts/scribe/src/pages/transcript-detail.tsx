@@ -25,6 +25,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { localSummarize } from "@/lib/local-summarize";
 import { localCleanup } from "@/lib/local-cleanup";
+import { localAutotag, TAG_COLORS } from "@/lib/local-autotag";
+import { listTags, createTag } from "@workspace/api-client-react";
 
 export function TranscriptDetailPage() {
   const params = useParams();
@@ -52,6 +54,7 @@ export function TranscriptDetailPage() {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [localSummarizing, setLocalSummarizing] = useState(false);
   const [localCleaning, setLocalCleaning] = useState(false);
+  const [localAutotagging, setLocalAutotagging] = useState(false);
   const [showCleaned, setShowCleaned] = useState(true);
 
   useEffect(() => {
@@ -134,6 +137,53 @@ export function TranscriptDetailPage() {
         onSettled: () => setLocalCleaning(false),
       }
     );
+  };
+
+  const handleAutotag = async () => {
+    if (hasApiKey) {
+      wrapAIMutation(autotag, "Auto-tagging");
+      return;
+    }
+    if (!transcript) return;
+    setLocalAutotagging(true);
+    try {
+      const text = transcript.cleanedText ?? transcript.rawText;
+      const tagNames = localAutotag(text);
+      if (tagNames.length === 0) {
+        toast({ title: "Not enough text to generate tags", variant: "destructive" });
+        return;
+      }
+      const allTags = await listTags();
+      const tagIds: number[] = [];
+      for (const name of tagNames) {
+        const existing = allTags.find(
+          (t) => t.name.toLowerCase() === name.toLowerCase(),
+        );
+        if (existing) {
+          tagIds.push(existing.id);
+        } else {
+          const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+          const created = await createTag({ name: name.toLowerCase(), color });
+          tagIds.push(created.id);
+        }
+      }
+      updateTranscript.mutate(
+        { id, data: { tagIds } },
+        {
+          onSuccess: (data) => {
+            queryClient.setQueryData(getGetTranscriptQueryKey(id), data);
+            toast({ title: "Tags applied" });
+          },
+          onError: () => {
+            toast({ title: "Could not save tags", variant: "destructive" });
+          },
+        },
+      );
+    } catch {
+      toast({ title: "Auto-tagging failed", variant: "destructive" });
+    } finally {
+      setLocalAutotagging(false);
+    }
   };
 
   const handleSummarize = () => {
@@ -271,18 +321,24 @@ export function TranscriptDetailPage() {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="gap-2"
-              disabled={!hasApiKey || autotag.isPending}
-              onClick={() => wrapAIMutation(autotag, "Auto-tagging")}
+              disabled={autotag.isPending || localAutotagging}
+              onClick={handleAutotag}
             >
-              {autotag.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <TagsIcon className="w-4 h-4 text-primary" />}
+              {(autotag.isPending || localAutotagging) ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <TagsIcon className="w-4 h-4 text-primary" />
+              )}
               Auto-Tag
             </Button>
           </TooltipTrigger>
-          {!hasApiKey && <TooltipContent>Requires OpenAI API Key in Settings</TooltipContent>}
+          {!hasApiKey && (
+            <TooltipContent>Keyword-based tagging — runs locally, no API key needed</TooltipContent>
+          )}
         </Tooltip>
       </div>
 
