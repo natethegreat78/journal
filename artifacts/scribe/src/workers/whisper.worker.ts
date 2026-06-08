@@ -51,7 +51,13 @@ self.addEventListener("message", async (event: MessageEvent) => {
   if (type === "transcribe" && audio) {
     try {
       const t = await getTranscriber(modelId);
-      const result = await t(audio, { sampling_rate: 16000 });
+      const result = await t(audio, {
+        sampling_rate: 16000,
+        // Split audio into 30-second chunks with 5-second overlap so Whisper
+        // transcribes the full recording, not just the first 30 seconds.
+        chunk_length_s: 30,
+        stride_length_s: 5,
+      });
       const text = Array.isArray(result)
         ? (result[0]?.text ?? "")
         : ((result as { text?: string }).text ?? "");
