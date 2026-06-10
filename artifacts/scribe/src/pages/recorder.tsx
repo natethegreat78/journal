@@ -143,11 +143,11 @@ export function RecorderPage() {
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
       setFileSaveState("idle");
       setFileSaveError(null);
-      await start();
+      // Don't auto-start — let the user click the mic when ready
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
     }
-  }, [start]);
+  }, []);
 
   // ── Firefox: new download ─────────────────────────────────────────────────
   const recordForDownload = useCallback(async (mode: FileMode) => {
@@ -171,8 +171,8 @@ export function RecorderPage() {
     setTargetFile({ handle: null, firefoxFile: file, name: file.name, mode, append: true });
     setFileSaveState("idle");
     setFileSaveError(null);
-    await start();
-  }, [start]);
+    // Don't auto-start — let the user click the mic when ready
+  }, []);
 
   // ── Save / append after transcription ────────────────────────────────────
   const handleSaveToFile = useCallback(async () => {
