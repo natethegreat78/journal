@@ -158,10 +158,11 @@ export function RecorderPage() {
   const openJournalAndRecord = useCallback(async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // No 'types' filter — Chrome grays out files when the system MIME type
+      // isn't registered (common for .docx). Detect format from extension instead.
       const [handle]: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
-        types: OPEN_PICKER_TYPES,
         multiple: false,
-        mode: "readwrite",       // request write permission upfront
+        mode: "readwrite",
       });
       const mode = detectMode(handle.name);
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
