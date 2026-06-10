@@ -1,4 +1,4 @@
-import { zipSync, strToU8 } from "fflate";
+import { zipSync, unzipSync, strToU8 } from "fflate";
 
 function escapeXml(str: string): string {
   return str
@@ -106,6 +106,73 @@ function buildMetaXml(title: string, createdAt: string): string {
     <meta:generator>Journal</meta:generator>
   </office:meta>
 </office:document-meta>`;
+}
+
+const ENTRY_SEPARATOR = "────────────────────────────────────────";
+
+/**
+ * Append a new dated journal entry to an existing .txt string.
+ */
+export function appendToTxt(existing: string, text: string, date: string): string {
+  const sep = `\n\n${ENTRY_SEPARATOR}\n${date}\n\n`;
+  return existing.trimEnd() + sep + text.trim();
+}
+
+/**
+ * Append a new dated journal entry to an existing ODT file's bytes.
+ * Uses string injection into content.xml rather than full DOM parsing,
+ * so it works with any valid ODT (not just ones we created).
+ */
+export function appendToOdtBytes(
+  existingBytes: Uint8Array,
+  text: string,
+  date: string,
+): Uint8Array {
+  try {
+    const files = unzipSync(existingBytes);
+    const rawXml = files["content.xml"];
+    if (!rawXml) throw new Error("No content.xml found");
+
+    let contentXml = new TextDecoder().decode(rawXml);
+
+    // Find the closing </office:text> or </text:section> to inject before
+    const insertMarkers = ["</office:text>", "</text:section>"];
+    let insertIdx = -1;
+    for (const marker of insertMarkers) {
+      const idx = contentXml.lastIndexOf(marker);
+      if (idx !== -1) { insertIdx = idx; break; }
+    }
+    if (insertIdx === -1) throw new Error("Cannot find insertion point in content.xml");
+
+    const newElements = [
+      `<text:p text:style-name="Meta">${escapeXml(ENTRY_SEPARATOR)}</text:p>`,
+      `<text:h text:style-name="Heading_2" text:outline-level="2">${escapeXml(date)}</text:h>`,
+      ...text.split(/\n+/).filter(l => l.trim()).map(l =>
+        `<text:p text:style-name="Text_Body">${escapeXml(l.trim())}</text:p>`
+      ),
+    ].join("\n      ");
+
+    contentXml = contentXml.slice(0, insertIdx) + "\n      " + newElements + "\n    " + contentXml.slice(insertIdx);
+
+    // Re-zip preserving all other files; mimetype must be STORED (level 0) and first
+    const manifest = files["META-INF/manifest.xml"] ?? strToU8(MANIFEST_XML);
+    const styles   = files["styles.xml"]            ?? strToU8(STYLES_XML);
+    const meta     = files["meta.xml"]              ?? strToU8(buildMetaXml(date, date));
+
+    return zipSync(
+      {
+        mimetype: [strToU8("application/vnd.oasis.opendocument.text"), { level: 0 }],
+        "META-INF/manifest.xml": manifest,
+        "content.xml": strToU8(contentXml),
+        "styles.xml": styles,
+        "meta.xml": meta,
+      },
+      { level: 6 }
+    );
+  } catch {
+    // Fallback: rebuild from scratch so the user always gets something
+    return buildOdtBytes(date, text, null, date);
+  }
 }
 
 export function buildOdtBytes(

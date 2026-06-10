@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   Mic, Square, Loader2, AlertCircle, RotateCcw, Save,
-  Download, FolderOpen, FileText, CheckCircle2, X,
+  Download, FolderOpen, FilePlus, FileText, CheckCircle2, X, BookOpen,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useCallback } from "react";
-import { buildOdtBytes, exportAsOdt } from "@/lib/export-odt";
+import { useState, useCallback, useRef } from "react";
+import {
+  buildOdtBytes, exportAsOdt,
+  appendToOdtBytes, appendToTxt,
+} from "@/lib/export-odt";
 
 function formatDuration(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -22,15 +25,19 @@ function formatDuration(seconds: number) {
 type FileMode = "txt" | "odt";
 
 interface TargetFile {
-  /** null = Firefox fallback (download after transcription) */
+  /** Chrome/Edge real handle; null = Firefox download path */
   handle: FileSystemFileHandle | null;
+  /** Firefox only: the File object read at pick-time for appending */
+  firefoxFile: File | null;
   name: string;
   mode: FileMode;
+  /** true = append entry to existing file; false = create/overwrite */
+  append: boolean;
 }
 
 const FILE_PICKER_TYPES = [
-  { description: "Plain text", accept: { "text/plain": [".txt"] } },
-  { description: "OpenDocument Text", accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
+  { description: "Plain text",         accept: { "text/plain": [".txt"] } },
+  { description: "OpenDocument Text",  accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
 ];
 
 function transcriptTitle(text: string) {
@@ -38,29 +45,28 @@ function transcriptTitle(text: string) {
   return words.slice(0, 6).join(" ") + (words.length > 6 ? "…" : "");
 }
 
+async function readHandle(handle: FileSystemFileHandle): Promise<Uint8Array> {
+  const file = await handle.getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 async function writeToHandle(
   handle: FileSystemFileHandle,
-  mode: FileMode,
-  title: string,
-  text: string,
-  now: string,
+  data: string | Uint8Array,
 ): Promise<void> {
   const writable = await handle.createWritable();
-  if (mode === "odt") {
-    const bytes = buildOdtBytes(title, text, null, now);
-    await writable.write(bytes.buffer as ArrayBuffer);
-  } else {
-    await writable.write(`${title}\n${now}\n\n${text}`);
-  }
+  await writable.write(typeof data === "string" ? data : (data.buffer as ArrayBuffer));
   await writable.close();
 }
 
-function downloadTxt(title: string, text: string, now: string) {
-  const blob = new Blob([`${title}\n${now}\n\n${text}`], { type: "text/plain" });
+function triggerDownload(filename: string, data: string | Uint8Array, mime: string) {
+  const blob = typeof data === "string"
+    ? new Blob([data], { type: mime })
+    : new Blob([data.buffer as ArrayBuffer], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.txt`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -77,8 +83,10 @@ export function RecorderPage() {
   const [targetFile, setTargetFile] = useState<TargetFile | null>(null);
   const [fileSaveState, setFileSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [fileSaveError, setFileSaveError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingModeRef = useRef<FileMode | null>(null);
 
-  const hasFsApi = "showSaveFilePicker" in window;
+  const hasFsApi = "showSaveFilePicker" in window && "showOpenFilePicker" in window;
 
   const clearTarget = useCallback(() => {
     setTargetFile(null);
@@ -86,8 +94,8 @@ export function RecorderPage() {
     setFileSaveError(null);
   }, []);
 
-  /** Chrome/Edge: open native file-save picker then start recording */
-  const pickFileAndRecord = useCallback(async () => {
+  // ── Chrome: new file ──────────────────────────────────────────────────────
+  const pickNewFileAndRecord = useCallback(async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({
@@ -95,38 +103,110 @@ export function RecorderPage() {
         suggestedName: "journal-entry",
       });
       const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
-      setTargetFile({ handle, name: handle.name, mode });
+      setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: false });
       setFileSaveState("idle");
       setFileSaveError(null);
       await start();
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      console.error("File picker error", err);
     }
   }, [start]);
 
-  /** Firefox: choose format, record, download later */
+  // ── Chrome: open existing journal file ───────────────────────────────────
+  const openJournalAndRecord = useCallback(async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const [handle]: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
+        types: FILE_PICKER_TYPES,
+        multiple: false,
+      });
+      const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
+      setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
+      setFileSaveState("idle");
+      setFileSaveError(null);
+      await start();
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+    }
+  }, [start]);
+
+  // ── Firefox: new download ─────────────────────────────────────────────────
   const recordForDownload = useCallback(async (mode: FileMode) => {
-    setTargetFile({ handle: null, name: `journal-entry.${mode}`, mode });
+    setTargetFile({ handle: null, firefoxFile: null, name: `journal-entry.${mode}`, mode, append: false });
     setFileSaveState("idle");
     setFileSaveError(null);
     await start();
   }, [start]);
 
-  /** After transcription: write to handle (Chrome) or trigger download (Firefox) */
+  // ── Firefox: open existing file via <input> ───────────────────────────────
+  const openJournalFirefox = useCallback((mode: FileMode) => {
+    pendingModeRef.current = mode;
+    fileInputRef.current?.click();
+  }, []);
+
+  const onFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";                          // reset so same file can be re-opened
+    const mode = pendingModeRef.current ?? (file.name.toLowerCase().endsWith(".odt") ? "odt" : "txt");
+    setTargetFile({ handle: null, firefoxFile: file, name: file.name, mode, append: true });
+    setFileSaveState("idle");
+    setFileSaveError(null);
+    await start();
+  }, [start]);
+
+  // ── Save / append after transcription ────────────────────────────────────
   const handleSaveToFile = useCallback(async () => {
     if (!targetFile || !transcript.trim()) return;
     setFileSaveState("saving");
     const title = transcriptTitle(transcript);
-    const now = new Date().toLocaleString();
+    const now   = new Date().toLocaleString();
+
     try {
-      if (targetFile.handle) {
-        await writeToHandle(targetFile.handle, targetFile.mode, title, transcript, now);
-      } else if (targetFile.mode === "odt") {
-        exportAsOdt(title, transcript, null, now);
+      const { handle, firefoxFile, mode, append } = targetFile;
+      const slug = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+
+      if (append) {
+        if (mode === "odt") {
+          const existingBytes = handle
+            ? await readHandle(handle)
+            : new Uint8Array(await (firefoxFile as File).arrayBuffer());
+          const updated = appendToOdtBytes(existingBytes, transcript.trim(), now);
+          if (handle) {
+            await writeToHandle(handle, updated);
+          } else {
+            triggerDownload(targetFile.name, updated, "application/vnd.oasis.opendocument.text");
+          }
+        } else {
+          const existingText = handle
+            ? new TextDecoder().decode(await readHandle(handle))
+            : await (firefoxFile as File).text();
+          const updated = appendToTxt(existingText, transcript.trim(), now);
+          if (handle) {
+            await writeToHandle(handle, updated);
+          } else {
+            triggerDownload(targetFile.name, updated, "text/plain");
+          }
+        }
       } else {
-        downloadTxt(title, transcript, now);
+        // create / overwrite
+        if (mode === "odt") {
+          const bytes = buildOdtBytes(title, transcript.trim(), null, now);
+          if (handle) {
+            await writeToHandle(handle, bytes);
+          } else {
+            exportAsOdt(title, transcript.trim(), null, now);
+          }
+        } else {
+          const content = `${title}\n${now}\n\n${transcript.trim()}`;
+          if (handle) {
+            await writeToHandle(handle, content);
+          } else {
+            triggerDownload(`${slug}.txt`, content, "text/plain");
+          }
+        }
       }
+
       setFileSaveState("saved");
     } catch (err) {
       setFileSaveError(err instanceof Error ? err.message : String(err));
@@ -143,39 +223,50 @@ export function RecorderPage() {
     );
   };
 
-  const wordCount = transcript.trim().split(/\s+/).filter((w) => w.length > 0).length;
-  const modelLabel = WHISPER_MODELS.find((m) => m.id === model)?.label ?? model;
+  const wordCount  = transcript.trim().split(/\s+/).filter(w => w.length > 0).length;
+  const modelLabel = WHISPER_MODELS.find(m => m.id === model)?.label ?? model;
   const isModelReady = modelState === "ready";
 
-  const fileLabel = targetFile
-    ? targetFile.handle
-      ? `→ ${targetFile.name}`           // Chrome: real file path chosen
-      : `Download as .${targetFile.mode.toUpperCase()}`  // Firefox: format chosen
+  const fileBadgeLabel = targetFile
+    ? `${targetFile.append ? "Appending to" : "→"} ${targetFile.name}`
     : null;
+
+  const fileSaveBtnLabel = targetFile
+    ? targetFile.handle
+      ? targetFile.append ? `Append to ${targetFile.name}` : `Save to ${targetFile.name}`
+      : targetFile.append ? `Download updated ${targetFile.name}` : `Download as .${targetFile.mode.toUpperCase()}`
+    : "";
 
   return (
     <div className="flex flex-col h-full py-12 px-8">
+      {/* Hidden file input for Firefox append */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.odt"
+        className="hidden"
+        onChange={onFileInputChange}
+      />
+
       <div className="mb-10 text-center">
         <h1 className="text-4xl font-serif font-bold text-foreground mb-3">
           What&apos;s on your mind?
         </h1>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          {state === "idle" && modelState === "loading" && "Loading local Whisper model…"}
-          {state === "idle" && modelState === "ready" && "Press record and start speaking. Everything stays on this device."}
-          {state === "idle" && modelState === "error" && "Could not load transcription model."}
-          {state === "recording" && "Recording — speak naturally. Your audio stays on this device."}
-          {state === "transcribing" && "Transcribing locally with Whisper…"}
-          {state === "done" && "Transcription complete. Save to your library or write to a file."}
-          {state === "error" && "Something went wrong."}
+          {state === "idle"        && modelState === "loading" && "Loading local Whisper model…"}
+          {state === "idle"        && modelState === "ready"   && "Press record and start speaking. Everything stays on this device."}
+          {state === "idle"        && modelState === "error"   && "Could not load transcription model."}
+          {state === "recording"   && "Recording — speak naturally. Your audio stays on this device."}
+          {state === "transcribing"&& "Transcribing locally with Whisper…"}
+          {state === "done"        && "Transcription complete. Save to your library or write to a file."}
+          {state === "error"       && "Something went wrong."}
         </p>
       </div>
 
       <AnimatePresence>
         {modelState === "loading" && state === "idle" && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             className="mb-6 max-w-2xl mx-auto w-full"
           >
             <Card className="p-5 bg-card/50 border-border/50 shadow-sm">
@@ -218,16 +309,12 @@ export function RecorderPage() {
 
         {modelState === "error" && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="mb-6 max-w-2xl mx-auto w-full"
           >
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Could not load model: {modelError}. Try refreshing the page.
-              </AlertDescription>
+              <AlertDescription>Could not load model: {modelError}. Try refreshing.</AlertDescription>
             </Alert>
           </motion.div>
         )}
@@ -249,9 +336,7 @@ export function RecorderPage() {
           {state === "idle" && (
             <motion.div
               key="idle"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
               className="flex-1 flex flex-col items-center justify-center gap-5"
             >
               <button
@@ -260,11 +345,10 @@ export function RecorderPage() {
                 disabled={!isModelReady}
                 className="w-32 h-32 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center shadow-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                {modelState === "loading" ? (
-                  <Loader2 className="w-10 h-10 animate-spin" />
-                ) : (
-                  <Mic className="w-12 h-12" />
-                )}
+                {modelState === "loading"
+                  ? <Loader2 className="w-10 h-10 animate-spin" />
+                  : <Mic className="w-12 h-12" />
+                }
               </button>
 
               {isModelReady && (
@@ -273,55 +357,75 @@ export function RecorderPage() {
                 </p>
               )}
 
-              {/* File-to-file section — shown in all browsers once model is ready */}
+              {/* ── File options (shown once model ready) ── */}
               {isModelReady && (
-                <div className="flex flex-col items-center gap-2 mt-1">
+                <div className="flex flex-col items-center gap-3 mt-1">
+
                   {/* Selected file badge */}
                   {targetFile && (
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-sm text-primary">
-                      <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="max-w-[220px] truncate font-medium">{targetFile.name}</span>
-                      <button
-                        onClick={clearTarget}
-                        className="ml-0.5 text-primary/60 hover:text-primary transition-colors"
-                        aria-label="Clear file"
-                      >
+                      {targetFile.append
+                        ? <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                        : <FileText className="w-3.5 h-3.5 shrink-0" />
+                      }
+                      <span className="max-w-[220px] truncate font-medium">{fileBadgeLabel}</span>
+                      <button onClick={clearTarget} aria-label="Clear" className="ml-0.5 text-primary/60 hover:text-primary transition-colors">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
 
                   {hasFsApi ? (
-                    /* Chrome / Edge — native file picker */
-                    <button
-                      onClick={pickFileAndRecord}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5" />
-                      {targetFile ? "Change file and record…" : "Record directly to a file (.txt or .odt)…"}
-                    </button>
-                  ) : (
-                    /* Firefox — pick format, we'll download after transcription */
+                    /* Chrome / Edge */
                     <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-xs text-muted-foreground">
-                        {targetFile ? "Format selected — press the mic to record" : "Or record and save as a file:"}
-                      </p>
-                      {!targetFile && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => recordForDownload("txt")}
-                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                          >
-                            <Download className="w-3 h-3" /> .TXT
-                          </button>
-                          <button
-                            onClick={() => recordForDownload("odt")}
-                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                          >
-                            <Download className="w-3 h-3" /> .ODT
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        onClick={pickNewFileAndRecord}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                      >
+                        <FilePlus className="w-3.5 h-3.5" />
+                        Record to a new file (.txt or .odt)…
+                      </button>
+                      <button
+                        onClick={openJournalAndRecord}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        Add entry to an existing journal file…
+                      </button>
+                    </div>
+                  ) : (
+                    /* Firefox */
+                    <div className="flex flex-col items-center gap-2">
+                      <p className="text-xs text-muted-foreground">Record and save as a file:</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => recordForDownload("txt")}
+                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                        >
+                          <FilePlus className="w-3 h-3" /> New .TXT
+                        </button>
+                        <button
+                          onClick={() => recordForDownload("odt")}
+                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                        >
+                          <FilePlus className="w-3 h-3" /> New .ODT
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Or add an entry to an existing journal:</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openJournalFirefox("txt")}
+                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                        >
+                          <BookOpen className="w-3 h-3" /> Open .TXT journal
+                        </button>
+                        <button
+                          onClick={() => openJournalFirefox("odt")}
+                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                        >
+                          <BookOpen className="w-3 h-3" /> Open .ODT journal
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -333,9 +437,7 @@ export function RecorderPage() {
           {state === "recording" && (
             <motion.div
               key="recording"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
               className="w-full flex-1 flex flex-col"
             >
               <Card className="w-full flex-1 flex flex-col overflow-hidden bg-card/50 backdrop-blur shadow-sm border-border/50">
@@ -351,8 +453,8 @@ export function RecorderPage() {
                     <span>Recording audio locally</span>
                     {targetFile && (
                       <span className="flex items-center gap-1 text-primary/70">
-                        <FileText className="w-3.5 h-3.5" />
-                        {fileLabel}
+                        {targetFile.append ? <BookOpen className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                        {fileBadgeLabel}
                       </span>
                     )}
                   </div>
@@ -381,9 +483,7 @@ export function RecorderPage() {
           {state === "transcribing" && (
             <motion.div
               key="transcribing"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex flex-col items-center justify-center gap-6"
             >
               <Loader2 className="w-12 h-12 animate-spin text-primary" />
@@ -397,8 +497,7 @@ export function RecorderPage() {
           {state === "done" && (
             <motion.div
               key="done"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="w-full flex-1 flex flex-col"
             >
               <Card className="w-full flex-1 flex flex-col overflow-hidden bg-card/50 backdrop-blur shadow-sm border-border/50">
@@ -410,8 +509,7 @@ export function RecorderPage() {
                   <div className="flex items-center gap-2">
                     <Button
                       data-testid="button-discard"
-                      variant="ghost"
-                      size="sm"
+                      variant="ghost" size="sm"
                       onClick={() => { reset(); clearTarget(); }}
                       className="gap-1.5 text-muted-foreground"
                     >
@@ -419,31 +517,28 @@ export function RecorderPage() {
                       Discard
                     </Button>
 
-                    {/* File save / download button */}
                     {targetFile && (
                       fileSaveState === "saved" ? (
                         <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium px-3">
                           <CheckCircle2 className="w-4 h-4" />
-                          {targetFile.handle ? `Saved to ${targetFile.name}` : `Downloaded`}
+                          {targetFile.handle ? `Saved to ${targetFile.name}` : "Downloaded"}
                         </span>
                       ) : (
                         <Button
-                          variant="outline"
-                          size="sm"
+                          variant="outline" size="sm"
                           onClick={handleSaveToFile}
                           disabled={fileSaveState === "saving"}
                           className="gap-2"
                         >
-                          {fileSaveState === "saving" ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : targetFile.handle ? (
-                            <FileText className="w-4 h-4" />
-                          ) : (
-                            <Download className="w-4 h-4" />
-                          )}
-                          {targetFile.handle
-                            ? `Save to ${targetFile.name}`
-                            : `Download as .${targetFile.mode.toUpperCase()}`}
+                          {fileSaveState === "saving"
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : targetFile.append
+                              ? <BookOpen className="w-4 h-4" />
+                              : targetFile.handle
+                                ? <FileText className="w-4 h-4" />
+                                : <Download className="w-4 h-4" />
+                          }
+                          {fileSaveBtnLabel}
                         </Button>
                       )
                     )}
@@ -454,11 +549,10 @@ export function RecorderPage() {
                       disabled={createTranscript.isPending}
                       className="gap-2"
                     >
-                      {createTranscript.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Save className="w-4 h-4" />
-                      )}
+                      {createTranscript.isPending
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Save className="w-4 h-4" />
+                      }
                       Save to Library
                     </Button>
                   </div>
@@ -481,8 +575,7 @@ export function RecorderPage() {
           {state === "error" && (
             <motion.div
               key="error"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               className="flex-1 flex items-center justify-center"
             >
               <Button variant="outline" onClick={() => { reset(); clearTarget(); }} className="gap-2">
