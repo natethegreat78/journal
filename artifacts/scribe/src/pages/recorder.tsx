@@ -15,6 +15,9 @@ import {
   buildOdtBytes, exportAsOdt,
   appendToOdtBytes, appendToTxt,
 } from "@/lib/export-odt";
+import {
+  buildDocxBytes, exportAsDocx, appendToDocxBytes,
+} from "@/lib/export-docx";
 
 function formatDuration(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -22,7 +25,7 @@ function formatDuration(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-type FileMode = "txt" | "odt";
+type FileMode = "txt" | "odt" | "docx";
 
 interface TargetFile {
   /** Chrome/Edge real handle; null = Firefox download path */
@@ -38,6 +41,7 @@ interface TargetFile {
 const FILE_PICKER_TYPES = [
   { description: "Plain text",         accept: { "text/plain": [".txt"] } },
   { description: "OpenDocument Text",  accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
+  { description: "Word Document",      accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } },
 ];
 
 function transcriptTitle(text: string) {
@@ -192,38 +196,37 @@ export function RecorderPage() {
             ? await readHandle(handle)
             : new Uint8Array(await (firefoxFile as File).arrayBuffer());
           const updated = appendToOdtBytes(existingBytes, transcript.trim(), now);
-          if (handle) {
-            await writeToHandle(handle, updated);
-          } else {
-            triggerDownload(targetFile.name, updated, "application/vnd.oasis.opendocument.text");
-          }
+          if (handle) await writeToHandle(handle, updated);
+          else triggerDownload(targetFile.name, updated, "application/vnd.oasis.opendocument.text");
+        } else if (mode === "docx") {
+          const existingBytes = handle
+            ? await readHandle(handle)
+            : new Uint8Array(await (firefoxFile as File).arrayBuffer());
+          const updated = appendToDocxBytes(existingBytes, transcript.trim(), now);
+          if (handle) await writeToHandle(handle, updated);
+          else triggerDownload(targetFile.name, updated, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         } else {
           const existingText = handle
             ? new TextDecoder().decode(await readHandle(handle))
             : await (firefoxFile as File).text();
           const updated = appendToTxt(existingText, transcript.trim(), now);
-          if (handle) {
-            await writeToHandle(handle, updated);
-          } else {
-            triggerDownload(targetFile.name, updated, "text/plain");
-          }
+          if (handle) await writeToHandle(handle, updated);
+          else triggerDownload(targetFile.name, updated, "text/plain");
         }
       } else {
         // create / overwrite
         if (mode === "odt") {
           const bytes = buildOdtBytes(title, transcript.trim(), null, now);
-          if (handle) {
-            await writeToHandle(handle, bytes);
-          } else {
-            exportAsOdt(title, transcript.trim(), null, now);
-          }
+          if (handle) await writeToHandle(handle, bytes);
+          else exportAsOdt(title, transcript.trim(), null, now);
+        } else if (mode === "docx") {
+          const bytes = buildDocxBytes(title, transcript.trim(), null, now);
+          if (handle) await writeToHandle(handle, bytes);
+          else exportAsDocx(title, transcript.trim(), null, now);
         } else {
           const content = `${title}\n${now}\n\n${transcript.trim()}`;
-          if (handle) {
-            await writeToHandle(handle, content);
-          } else {
-            triggerDownload(`${slug}.txt`, content, "text/plain");
-          }
+          if (handle) await writeToHandle(handle, content);
+          else triggerDownload(`${slug}.txt`, content, "text/plain");
         }
       }
 
@@ -416,35 +419,27 @@ export function RecorderPage() {
                   ) : (
                     /* Firefox */
                     <div className="flex flex-col items-center gap-2">
-                      <p className="text-xs text-muted-foreground">Record and save as a file:</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => recordForDownload("txt")}
-                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                        >
-                          <FilePlus className="w-3 h-3" /> New .TXT
-                        </button>
-                        <button
-                          onClick={() => recordForDownload("odt")}
-                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                        >
-                          <FilePlus className="w-3 h-3" /> New .ODT
-                        </button>
+                      <p className="text-xs text-muted-foreground">Record and save as a new file:</p>
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        {(["txt", "odt", "docx"] as const).map(fmt => (
+                          <button key={fmt}
+                            onClick={() => recordForDownload(fmt)}
+                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                          >
+                            <FilePlus className="w-3 h-3" /> .{fmt.toUpperCase()}
+                          </button>
+                        ))}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">Or add an entry to an existing journal:</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openJournalFirefox("txt")}
-                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                        >
-                          <BookOpen className="w-3 h-3" /> Open .TXT journal
-                        </button>
-                        <button
-                          onClick={() => openJournalFirefox("odt")}
-                          className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
-                        >
-                          <BookOpen className="w-3 h-3" /> Open .ODT journal
-                        </button>
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        {(["txt", "odt", "docx"] as const).map(fmt => (
+                          <button key={fmt}
+                            onClick={() => openJournalFirefox(fmt)}
+                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                          >
+                            <BookOpen className="w-3 h-3" /> Open .{fmt.toUpperCase()}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}

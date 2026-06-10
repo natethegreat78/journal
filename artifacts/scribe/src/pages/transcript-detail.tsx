@@ -27,6 +27,7 @@ import { localSummarize } from "@/lib/local-summarize";
 import { localCleanup } from "@/lib/local-cleanup";
 import { localAutotag, TAG_COLORS } from "@/lib/local-autotag";
 import { exportAsOdt } from "@/lib/export-odt";
+import { exportAsDocx } from "@/lib/export-docx";
 import { listTags, createTag } from "@workspace/api-client-react";
 
 export function TranscriptDetailPage() {
@@ -88,17 +89,16 @@ export function TranscriptDetailPage() {
     }
   };
 
-  const handleExport = (fmt: 'txt' | 'md' | 'odt') => {
+  const handleExport = (fmt: 'txt' | 'md' | 'odt' | 'docx') => {
     if (!transcript) return;
     const body = transcript.cleanedText || transcript.rawText;
 
     if (fmt === 'odt') {
-      exportAsOdt(
-        transcript.title,
-        body,
-        transcript.summary,
-        transcript.createdAt
-      );
+      exportAsOdt(transcript.title, body, transcript.summary, transcript.createdAt);
+      return;
+    }
+    if (fmt === 'docx') {
+      exportAsDocx(transcript.title, body, transcript.summary, transcript.createdAt);
       return;
     }
 
@@ -250,6 +250,10 @@ export function TranscriptDetailPage() {
           <Button variant="outline" size="sm" onClick={() => handleExport('odt')}>
             <Download className="w-4 h-4 mr-2" />
             .ODT
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExport('docx')}>
+            <Download className="w-4 h-4 mr-2" />
+            .DOCX
           </Button>
           <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDelete}>
             <Trash2 className="w-4 h-4" />
