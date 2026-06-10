@@ -158,11 +158,11 @@ export function RecorderPage() {
   const openJournalAndRecord = useCallback(async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      // No 'types' filter — Chrome grays out files when the system MIME type
-      // isn't registered (common for .docx). Detect format from extension instead.
+      // No types filter + no mode:'readwrite' — both cause Chrome to gray out files
+      // (.docx in cloud folders, OneDrive, Downloads). Write permission is requested
+      // explicitly in writeToHandle() when the user actually saves.
       const [handle]: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
         multiple: false,
-        mode: "readwrite",
       });
       const mode = detectMode(handle.name);
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
