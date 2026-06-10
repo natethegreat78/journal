@@ -287,7 +287,7 @@ export function RecorderPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.odt"
+        accept=".txt,.odt,.docx"
         className="hidden"
         onChange={onFileInputChange}
       />
