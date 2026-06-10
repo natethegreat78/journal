@@ -4,15 +4,46 @@ import { useWhisper, getStoredModel, WHISPER_MODELS } from "@/hooks/use-whisper"
 import { useCreateTranscript } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, Square, Loader2, AlertCircle, RotateCcw, Save, Download } from "lucide-react";
+import { Mic, Square, Loader2, AlertCircle, RotateCcw, Save, Download, FolderOpen, FileText, CheckCircle2, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { buildOdtBytes } from "@/lib/export-odt";
 
 function formatDuration(seconds: number) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+type FileMode = "txt" | "odt";
+
+interface TargetFile {
+  handle: FileSystemFileHandle;
+  name: string;
+  mode: FileMode;
+}
+
+const FILE_PICKER_TYPES = [
+  { description: "Plain text", accept: { "text/plain": [".txt"] } },
+  { description: "OpenDocument Text", accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
+];
+
+async function writeTranscriptToHandle(
+  handle: FileSystemFileHandle,
+  mode: FileMode,
+  title: string,
+  text: string,
+  now: string
+): Promise<void> {
+  const writable = await handle.createWritable();
+  if (mode === "odt") {
+    const bytes = buildOdtBytes(title, text, null, now);
+    await writable.write(bytes.buffer as ArrayBuffer);
+  } else {
+    await writable.write(`${title}\n${now}\n\n${text}`);
+  }
+  await writable.close();
 }
 
 export function RecorderPage() {
@@ -22,7 +53,54 @@ export function RecorderPage() {
   const [, setLocation] = useLocation();
   const createTranscript = useCreateTranscript();
 
-  const handleSave = () => {
+  const [targetFile, setTargetFile] = useState<TargetFile | null>(null);
+  const [fileSaveState, setFileSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [fileSaveError, setFileSaveError] = useState<string | null>(null);
+
+  const pickFileAndRecord = useCallback(async () => {
+    if (!("showSaveFilePicker" in window)) {
+      alert("Your browser does not support the File System Access API. Use Chrome or Edge.");
+      return;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handle = await (window as any).showSaveFilePicker({
+        types: FILE_PICKER_TYPES,
+        suggestedName: "journal-entry",
+      });
+      const ext = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
+      setTargetFile({ handle, name: handle.name, mode: ext });
+      setFileSaveState("idle");
+      setFileSaveError(null);
+      await start();
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      console.error("File picker error", err);
+    }
+  }, [start]);
+
+  const clearTargetFile = useCallback(() => {
+    setTargetFile(null);
+    setFileSaveState("idle");
+    setFileSaveError(null);
+  }, []);
+
+  const handleSaveToFile = useCallback(async () => {
+    if (!targetFile || !transcript.trim()) return;
+    setFileSaveState("saving");
+    const words = transcript.trim().split(/\s+/);
+    const title = words.slice(0, 6).join(" ") + (words.length > 6 ? "…" : "");
+    const now = new Date().toLocaleString();
+    try {
+      await writeTranscriptToHandle(targetFile.handle, targetFile.mode, title, transcript, now);
+      setFileSaveState("saved");
+    } catch (err) {
+      setFileSaveError(err instanceof Error ? err.message : String(err));
+      setFileSaveState("error");
+    }
+  }, [targetFile, transcript]);
+
+  const handleSaveToLibrary = () => {
     if (!transcript.trim()) return;
     const words = transcript.trim().split(/\s+/);
     const title = words.slice(0, 6).join(" ") + (words.length > 6 ? "..." : "");
@@ -39,6 +117,7 @@ export function RecorderPage() {
   const wordCount = transcript.trim().split(/\s+/).filter((w) => w.length > 0).length;
   const modelLabel = WHISPER_MODELS.find((m) => m.id === model)?.label ?? model;
   const isModelReady = modelState === "ready";
+  const hasFsApi = "showSaveFilePicker" in window;
 
   return (
     <div className="flex flex-col h-full py-12 px-8">
@@ -52,7 +131,7 @@ export function RecorderPage() {
           {state === "idle" && modelState === "error" && "Could not load transcription model."}
           {state === "recording" && "Recording — speak naturally. Your audio stays on this device."}
           {state === "transcribing" && "Transcribing locally with Whisper…"}
-          {state === "done" && "Transcription complete. Review and save."}
+          {state === "done" && "Transcription complete. Save to your library or write to a file."}
           {state === "error" && "Something went wrong."}
         </p>
       </div>
@@ -158,6 +237,31 @@ export function RecorderPage() {
                   Transcription runs locally · no internet required
                 </p>
               )}
+
+              {hasFsApi && isModelReady && (
+                <div className="flex flex-col items-center gap-2 mt-2">
+                  {targetFile ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-sm text-primary">
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      <span className="max-w-[200px] truncate font-medium">{targetFile.name}</span>
+                      <button
+                        onClick={clearTargetFile}
+                        className="ml-0.5 text-primary/60 hover:text-primary transition-colors"
+                        aria-label="Clear file"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <button
+                    onClick={pickFileAndRecord}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    {targetFile ? "Change file and record…" : "Record directly to a file (.txt or .odt)…"}
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -180,6 +284,12 @@ export function RecorderPage() {
                       <span data-testid="text-duration">{formatDuration(duration)}</span>
                     </div>
                     <span>Recording audio locally</span>
+                    {targetFile && (
+                      <span className="flex items-center gap-1 text-primary/70">
+                        <FileText className="w-3.5 h-3.5" />
+                        {targetFile.name}
+                      </span>
+                    )}
                   </div>
                   <Button
                     data-testid="button-stop"
@@ -240,15 +350,40 @@ export function RecorderPage() {
                       data-testid="button-discard"
                       variant="ghost"
                       size="sm"
-                      onClick={reset}
+                      onClick={() => { reset(); clearTargetFile(); }}
                       className="gap-1.5 text-muted-foreground"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       Discard
                     </Button>
+
+                    {targetFile && (
+                      fileSaveState === "saved" ? (
+                        <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium px-3">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Saved to {targetFile.name}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSaveToFile}
+                          disabled={fileSaveState === "saving"}
+                          className="gap-2"
+                        >
+                          {fileSaveState === "saving" ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <FileText className="w-4 h-4" />
+                          )}
+                          Save to {targetFile.name}
+                        </Button>
+                      )
+                    )}
+
                     <Button
                       data-testid="button-save"
-                      onClick={handleSave}
+                      onClick={handleSaveToLibrary}
                       disabled={createTranscript.isPending}
                       className="gap-2"
                     >
@@ -257,10 +392,17 @@ export function RecorderPage() {
                       ) : (
                         <Save className="w-4 h-4" />
                       )}
-                      Save Transcript
+                      Save to Library
                     </Button>
                   </div>
                 </div>
+
+                {fileSaveState === "error" && fileSaveError && (
+                  <div className="px-6 py-2 border-b border-destructive/20 bg-destructive/5">
+                    <p className="text-xs text-destructive">{fileSaveError}</p>
+                  </div>
+                )}
+
                 <div className="flex-1 p-8 overflow-y-auto font-serif text-xl leading-relaxed text-foreground">
                   {transcript}
                 </div>
@@ -275,7 +417,7 @@ export function RecorderPage() {
               animate={{ opacity: 1 }}
               className="flex-1 flex items-center justify-center"
             >
-              <Button variant="outline" onClick={reset} className="gap-2">
+              <Button variant="outline" onClick={() => { reset(); clearTargetFile(); }} className="gap-2">
                 <RotateCcw className="w-4 h-4" />
                 Try again
               </Button>

@@ -108,17 +108,17 @@ function buildMetaXml(title: string, createdAt: string): string {
 </office:document-meta>`;
 }
 
-export function exportAsOdt(
+export function buildOdtBytes(
   title: string,
   body: string,
   summary?: string | null,
   createdAt?: string | null
-): void {
+): Uint8Array {
   const dateStr = createdAt ?? new Date().toISOString();
   const contentXml = buildContentXml(title, summary, body, dateStr);
   const metaXml = buildMetaXml(title, dateStr);
 
-  const zip = zipSync(
+  return zipSync(
     {
       mimetype: [strToU8("application/vnd.oasis.opendocument.text"), { level: 0 }],
       "META-INF/manifest.xml": strToU8(MANIFEST_XML),
@@ -128,8 +128,16 @@ export function exportAsOdt(
     },
     { level: 6 }
   );
+}
 
-  const blob = new Blob([zip], { type: "application/vnd.oasis.opendocument.text" });
+export function exportAsOdt(
+  title: string,
+  body: string,
+  summary?: string | null,
+  createdAt?: string | null
+): void {
+  const zip = buildOdtBytes(title, body, summary, createdAt);
+  const blob = new Blob([zip.buffer as ArrayBuffer], { type: "application/vnd.oasis.opendocument.text" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
