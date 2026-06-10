@@ -521,71 +521,97 @@ export function RecorderPage() {
               className="w-full flex-1 flex flex-col"
             >
               <Card className="w-full flex-1 flex flex-col overflow-hidden bg-card/50 backdrop-blur shadow-sm border-border/50">
+                {/* ── Toolbar ── */}
                 <div className="flex justify-between items-center px-6 py-4 border-b border-border/50 bg-muted/20">
                   <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
                     <span>{formatDuration(duration)}</span>
                     <span>{wordCount} words</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      data-testid="button-discard"
-                      variant="ghost" size="sm"
-                      onClick={() => { reset(); clearTarget(); }}
-                      className="gap-1.5 text-muted-foreground"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Discard
-                    </Button>
-
-                    {targetFile && (
-                      fileSaveState === "saved" ? (
-                        <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium px-3">
-                          <CheckCircle2 className="w-4 h-4" />
-                          {targetFile.handle ? `Saved to ${targetFile.name}` : "Downloaded"}
-                        </span>
-                      ) : (
-                        <Button
-                          variant="outline" size="sm"
-                          onClick={handleSaveToFile}
-                          disabled={fileSaveState === "saving"}
-                          className="gap-2"
-                        >
-                          {fileSaveState === "saving"
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : targetFile.append
-                              ? <BookOpen className="w-4 h-4" />
-                              : targetFile.handle
-                                ? <FileText className="w-4 h-4" />
-                                : <Download className="w-4 h-4" />
-                          }
-                          {fileSaveBtnLabel}
-                        </Button>
-                      )
+                    {duration < 3 && (
+                      <span className="text-amber-500 text-xs">Recording was very short — transcription may be inaccurate</span>
                     )}
-
-                    <Button
-                      data-testid="button-save"
-                      onClick={handleSaveToLibrary}
-                      disabled={createTranscript.isPending}
-                      className="gap-2"
-                    >
-                      {createTranscript.isPending
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <Save className="w-4 h-4" />
-                      }
-                      Save to Library
-                    </Button>
                   </div>
+                  <Button
+                    data-testid="button-discard"
+                    variant="ghost" size="sm"
+                    onClick={() => { reset(); clearTarget(); }}
+                    className="gap-1.5 text-muted-foreground"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Discard
+                  </Button>
                 </div>
 
+                {/* ── Error banner ── */}
                 {fileSaveState === "error" && fileSaveError && (
                   <div className="px-6 py-2 border-b border-destructive/20 bg-destructive/5">
                     <p className="text-xs text-destructive">{fileSaveError}</p>
                   </div>
                 )}
 
+                {/* ── Transcript ── */}
                 <div className="flex-1 p-8 overflow-y-auto font-serif text-xl leading-relaxed text-foreground">
                   {transcript}
+                </div>
+
+                {/* ── Save actions — file-append is primary when a file is targeted ── */}
+                <div className="border-t border-border/50 bg-muted/10 px-6 py-4 flex flex-col gap-3">
+                  {targetFile ? (
+                    <>
+                      {/* Primary: save to file */}
+                      {fileSaveState === "saved" ? (
+                        <div className="flex items-center justify-center gap-2 text-green-600 font-medium py-2">
+                          <CheckCircle2 className="w-5 h-5" />
+                          {targetFile.handle ? `Saved to ${targetFile.name}` : "Downloaded"}
+                        </div>
+                      ) : (
+                        <Button
+                          size="lg"
+                          onClick={handleSaveToFile}
+                          disabled={fileSaveState === "saving"}
+                          className="w-full gap-2 text-base"
+                        >
+                          {fileSaveState === "saving"
+                            ? <Loader2 className="w-5 h-5 animate-spin" />
+                            : targetFile.append
+                              ? <BookOpen className="w-5 h-5" />
+                              : targetFile.handle
+                                ? <FileText className="w-5 h-5" />
+                                : <Download className="w-5 h-5" />
+                          }
+                          {fileSaveBtnLabel}
+                        </Button>
+                      )}
+
+                      {/* Secondary: save to library */}
+                      <button
+                        data-testid="button-save"
+                        onClick={handleSaveToLibrary}
+                        disabled={createTranscript.isPending}
+                        className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2 disabled:opacity-40"
+                      >
+                        {createTranscript.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Save className="w-3.5 h-3.5" />
+                        }
+                        Also save to library
+                      </button>
+                    </>
+                  ) : (
+                    /* No file targeted — library is the only action */
+                    <Button
+                      data-testid="button-save"
+                      size="lg"
+                      onClick={handleSaveToLibrary}
+                      disabled={createTranscript.isPending}
+                      className="w-full gap-2 text-base"
+                    >
+                      {createTranscript.isPending
+                        ? <Loader2 className="w-5 h-5 animate-spin" />
+                        : <Save className="w-5 h-5" />
+                      }
+                      Save to Library
+                    </Button>
+                  )}
                 </div>
               </Card>
             </motion.div>
