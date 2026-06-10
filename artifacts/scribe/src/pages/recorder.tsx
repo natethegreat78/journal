@@ -38,11 +38,31 @@ interface TargetFile {
   append: boolean;
 }
 
-const FILE_PICKER_TYPES = [
+// Save picker: separate entries so the user can pick a format when creating a new file
+const SAVE_PICKER_TYPES = [
   { description: "Plain text",         accept: { "text/plain": [".txt"] } },
   { description: "OpenDocument Text",  accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
   { description: "Word Document",      accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } },
 ];
+
+// Open picker: single combined entry so ALL supported files are selectable at once
+const OPEN_PICKER_TYPES = [
+  {
+    description: "Journal files (.txt, .odt, .docx)",
+    accept: {
+      "text/plain": [".txt"],
+      "application/vnd.oasis.opendocument.text": [".odt"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+    },
+  },
+];
+
+function detectMode(filename: string): FileMode {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".odt"))  return "odt";
+  if (lower.endsWith(".docx")) return "docx";
+  return "txt";
+}
 
 function transcriptTitle(text: string) {
   const words = text.trim().split(/\s+/);
@@ -121,10 +141,10 @@ export function RecorderPage() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({
-        types: FILE_PICKER_TYPES,
+        types: SAVE_PICKER_TYPES,
         suggestedName: "journal-entry",
       });
-      const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
+      const mode = detectMode(handle.name);
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: false });
       setFileSaveState("idle");
       setFileSaveError(null);
@@ -139,11 +159,11 @@ export function RecorderPage() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [handle]: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
-        types: FILE_PICKER_TYPES,
+        types: OPEN_PICKER_TYPES,
         multiple: false,
         mode: "readwrite",       // request write permission upfront
       });
-      const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
+      const mode = detectMode(handle.name);
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
       setFileSaveState("idle");
       setFileSaveError(null);
