@@ -47,16 +47,34 @@ function transcriptTitle(text: string) {
 
 async function readHandle(handle: FileSystemFileHandle): Promise<Uint8Array> {
   const file = await handle.getFile();
-  return new Uint8Array(await file.arrayBuffer());
+  const ab = await file.arrayBuffer();
+  console.log("[scribe] readHandle:", handle.name, "size=", ab.byteLength);
+  return new Uint8Array(ab);
 }
 
 async function writeToHandle(
   handle: FileSystemFileHandle,
   data: string | Uint8Array,
 ): Promise<void> {
+  // Explicitly request write permission — required if opened without mode:'readwrite'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const h = handle as any;
+  if (typeof h.requestPermission === "function") {
+    const perm = await h.requestPermission({ mode: "readwrite" });
+    console.log("[scribe] writeToHandle permission:", perm);
+    if (perm !== "granted") throw new Error("Write permission was not granted");
+  }
+  const size = typeof data === "string" ? data.length : data.byteLength;
+  console.log("[scribe] writeToHandle:", handle.name, "bytes=", size);
   const writable = await handle.createWritable();
-  await writable.write(typeof data === "string" ? data : (data.buffer as ArrayBuffer));
+  // Slice to an owned ArrayBuffer so the write gets exactly the right bytes
+  await writable.write(
+    typeof data === "string"
+      ? data
+      : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+  );
   await writable.close();
+  console.log("[scribe] writeToHandle: done");
 }
 
 function triggerDownload(filename: string, data: string | Uint8Array, mime: string) {
@@ -166,6 +184,7 @@ export function RecorderPage() {
     try {
       const { handle, firefoxFile, mode, append } = targetFile;
       const slug = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+      console.log("[scribe] handleSaveToFile:", { name: targetFile.name, mode, append, hasHandle: !!handle, hasFirefoxFile: !!firefoxFile });
 
       if (append) {
         if (mode === "odt") {

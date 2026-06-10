@@ -129,11 +129,14 @@ export function appendToOdtBytes(
   date: string,
 ): Uint8Array {
   try {
+    console.log("[scribe] appendToOdtBytes: input size=", existingBytes.byteLength);
     const files = unzipSync(existingBytes);
+    console.log("[scribe] appendToOdtBytes: zip entries=", Object.keys(files));
     const rawXml = files["content.xml"];
     if (!rawXml) throw new Error("No content.xml found");
 
     let contentXml = new TextDecoder().decode(rawXml);
+    console.log("[scribe] appendToOdtBytes: content.xml length=", contentXml.length, "has </office:text>=", contentXml.includes("</office:text>"));
 
     // Find the closing </office:text> or </text:section> to inject before
     const insertMarkers = ["</office:text>", "</text:section>"];
@@ -143,6 +146,7 @@ export function appendToOdtBytes(
       if (idx !== -1) { insertIdx = idx; break; }
     }
     if (insertIdx === -1) throw new Error("Cannot find insertion point in content.xml");
+    console.log("[scribe] appendToOdtBytes: insertIdx=", insertIdx);
 
     const newElements = [
       `<text:p text:style-name="Meta">${escapeXml(ENTRY_SEPARATOR)}</text:p>`,
