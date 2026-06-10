@@ -4,11 +4,14 @@ import { useWhisper, getStoredModel, WHISPER_MODELS } from "@/hooks/use-whisper"
 import { useCreateTranscript } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, Square, Loader2, AlertCircle, RotateCcw, Save, Download, FolderOpen, FileText, CheckCircle2, X } from "lucide-react";
+import {
+  Mic, Square, Loader2, AlertCircle, RotateCcw, Save,
+  Download, FolderOpen, FileText, CheckCircle2, X,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useCallback } from "react";
-import { buildOdtBytes } from "@/lib/export-odt";
+import { buildOdtBytes, exportAsOdt } from "@/lib/export-odt";
 
 function formatDuration(seconds: number) {
   const mins = Math.floor(seconds / 60);
@@ -19,7 +22,8 @@ function formatDuration(seconds: number) {
 type FileMode = "txt" | "odt";
 
 interface TargetFile {
-  handle: FileSystemFileHandle;
+  /** null = Firefox fallback (download after transcription) */
+  handle: FileSystemFileHandle | null;
   name: string;
   mode: FileMode;
 }
@@ -29,12 +33,17 @@ const FILE_PICKER_TYPES = [
   { description: "OpenDocument Text", accept: { "application/vnd.oasis.opendocument.text": [".odt"] } },
 ];
 
-async function writeTranscriptToHandle(
+function transcriptTitle(text: string) {
+  const words = text.trim().split(/\s+/);
+  return words.slice(0, 6).join(" ") + (words.length > 6 ? "…" : "");
+}
+
+async function writeToHandle(
   handle: FileSystemFileHandle,
   mode: FileMode,
   title: string,
   text: string,
-  now: string
+  now: string,
 ): Promise<void> {
   const writable = await handle.createWritable();
   if (mode === "odt") {
@@ -44,6 +53,18 @@ async function writeTranscriptToHandle(
     await writable.write(`${title}\n${now}\n\n${text}`);
   }
   await writable.close();
+}
+
+function downloadTxt(title: string, text: string, now: string) {
+  const blob = new Blob([`${title}\n${now}\n\n${text}`], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function RecorderPage() {
@@ -57,19 +78,24 @@ export function RecorderPage() {
   const [fileSaveState, setFileSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [fileSaveError, setFileSaveError] = useState<string | null>(null);
 
+  const hasFsApi = "showSaveFilePicker" in window;
+
+  const clearTarget = useCallback(() => {
+    setTargetFile(null);
+    setFileSaveState("idle");
+    setFileSaveError(null);
+  }, []);
+
+  /** Chrome/Edge: open native file-save picker then start recording */
   const pickFileAndRecord = useCallback(async () => {
-    if (!("showSaveFilePicker" in window)) {
-      alert("Your browser does not support the File System Access API. Use Chrome or Edge.");
-      return;
-    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const handle = await (window as any).showSaveFilePicker({
+      const handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({
         types: FILE_PICKER_TYPES,
         suggestedName: "journal-entry",
       });
-      const ext = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
-      setTargetFile({ handle, name: handle.name, mode: ext });
+      const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
+      setTargetFile({ handle, name: handle.name, mode });
       setFileSaveState("idle");
       setFileSaveError(null);
       await start();
@@ -79,20 +105,28 @@ export function RecorderPage() {
     }
   }, [start]);
 
-  const clearTargetFile = useCallback(() => {
-    setTargetFile(null);
+  /** Firefox: choose format, record, download later */
+  const recordForDownload = useCallback(async (mode: FileMode) => {
+    setTargetFile({ handle: null, name: `journal-entry.${mode}`, mode });
     setFileSaveState("idle");
     setFileSaveError(null);
-  }, []);
+    await start();
+  }, [start]);
 
+  /** After transcription: write to handle (Chrome) or trigger download (Firefox) */
   const handleSaveToFile = useCallback(async () => {
     if (!targetFile || !transcript.trim()) return;
     setFileSaveState("saving");
-    const words = transcript.trim().split(/\s+/);
-    const title = words.slice(0, 6).join(" ") + (words.length > 6 ? "…" : "");
+    const title = transcriptTitle(transcript);
     const now = new Date().toLocaleString();
     try {
-      await writeTranscriptToHandle(targetFile.handle, targetFile.mode, title, transcript, now);
+      if (targetFile.handle) {
+        await writeToHandle(targetFile.handle, targetFile.mode, title, transcript, now);
+      } else if (targetFile.mode === "odt") {
+        exportAsOdt(title, transcript, null, now);
+      } else {
+        downloadTxt(title, transcript, now);
+      }
       setFileSaveState("saved");
     } catch (err) {
       setFileSaveError(err instanceof Error ? err.message : String(err));
@@ -102,22 +136,22 @@ export function RecorderPage() {
 
   const handleSaveToLibrary = () => {
     if (!transcript.trim()) return;
-    const words = transcript.trim().split(/\s+/);
-    const title = words.slice(0, 6).join(" ") + (words.length > 6 ? "..." : "");
+    const title = transcriptTitle(transcript);
     createTranscript.mutate(
       { data: { title, rawText: transcript, durationSeconds: duration } },
-      {
-        onSuccess: (data) => {
-          setLocation(`/transcripts/${data.id}`);
-        },
-      }
+      { onSuccess: (data) => setLocation(`/transcripts/${data.id}`) }
     );
   };
 
   const wordCount = transcript.trim().split(/\s+/).filter((w) => w.length > 0).length;
   const modelLabel = WHISPER_MODELS.find((m) => m.id === model)?.label ?? model;
   const isModelReady = modelState === "ready";
-  const hasFsApi = "showSaveFilePicker" in window;
+
+  const fileLabel = targetFile
+    ? targetFile.handle
+      ? `→ ${targetFile.name}`           // Chrome: real file path chosen
+      : `Download as .${targetFile.mode.toUpperCase()}`  // Firefox: format chosen
+    : null;
 
   return (
     <div className="flex flex-col h-full py-12 px-8">
@@ -148,9 +182,7 @@ export function RecorderPage() {
               <div className="flex items-start gap-3">
                 <Download className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground mb-1">
-                    Loading Whisper model
-                  </p>
+                  <p className="text-sm font-medium text-foreground mb-1">Loading Whisper model</p>
                   <p className="text-xs text-muted-foreground mb-3">
                     {modelLabel} — downloading and caching locally for offline use
                   </p>
@@ -212,6 +244,8 @@ export function RecorderPage() {
 
       <div className="flex-1 flex flex-col items-center max-w-3xl mx-auto w-full">
         <AnimatePresence mode="wait">
+
+          {/* ── IDLE ── */}
           {state === "idle" && (
             <motion.div
               key="idle"
@@ -232,39 +266,70 @@ export function RecorderPage() {
                   <Mic className="w-12 h-12" />
                 )}
               </button>
+
               {isModelReady && (
                 <p className="text-xs text-muted-foreground">
                   Transcription runs locally · no internet required
                 </p>
               )}
 
-              {hasFsApi && isModelReady && (
-                <div className="flex flex-col items-center gap-2 mt-2">
-                  {targetFile ? (
+              {/* File-to-file section — shown in all browsers once model is ready */}
+              {isModelReady && (
+                <div className="flex flex-col items-center gap-2 mt-1">
+                  {/* Selected file badge */}
+                  {targetFile && (
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-sm text-primary">
                       <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="max-w-[200px] truncate font-medium">{targetFile.name}</span>
+                      <span className="max-w-[220px] truncate font-medium">{targetFile.name}</span>
                       <button
-                        onClick={clearTargetFile}
+                        onClick={clearTarget}
                         className="ml-0.5 text-primary/60 hover:text-primary transition-colors"
                         aria-label="Clear file"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  ) : null}
-                  <button
-                    onClick={pickFileAndRecord}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    {targetFile ? "Change file and record…" : "Record directly to a file (.txt or .odt)…"}
-                  </button>
+                  )}
+
+                  {hasFsApi ? (
+                    /* Chrome / Edge — native file picker */
+                    <button
+                      onClick={pickFileAndRecord}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      {targetFile ? "Change file and record…" : "Record directly to a file (.txt or .odt)…"}
+                    </button>
+                  ) : (
+                    /* Firefox — pick format, we'll download after transcription */
+                    <div className="flex flex-col items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        {targetFile ? "Format selected — press the mic to record" : "Or record and save as a file:"}
+                      </p>
+                      {!targetFile && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => recordForDownload("txt")}
+                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                          >
+                            <Download className="w-3 h-3" /> .TXT
+                          </button>
+                          <button
+                            onClick={() => recordForDownload("odt")}
+                            className="flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-border hover:border-primary hover:text-primary transition-colors text-muted-foreground"
+                          >
+                            <Download className="w-3 h-3" /> .ODT
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
           )}
 
+          {/* ── RECORDING ── */}
           {state === "recording" && (
             <motion.div
               key="recording"
@@ -287,16 +352,11 @@ export function RecorderPage() {
                     {targetFile && (
                       <span className="flex items-center gap-1 text-primary/70">
                         <FileText className="w-3.5 h-3.5" />
-                        {targetFile.name}
+                        {fileLabel}
                       </span>
                     )}
                   </div>
-                  <Button
-                    data-testid="button-stop"
-                    onClick={stop}
-                    variant="destructive"
-                    className="gap-2"
-                  >
+                  <Button data-testid="button-stop" onClick={stop} variant="destructive" className="gap-2">
                     <Square className="w-4 h-4 fill-current" />
                     Stop
                   </Button>
@@ -317,6 +377,7 @@ export function RecorderPage() {
             </motion.div>
           )}
 
+          {/* ── TRANSCRIBING ── */}
           {state === "transcribing" && (
             <motion.div
               key="transcribing"
@@ -332,6 +393,7 @@ export function RecorderPage() {
             </motion.div>
           )}
 
+          {/* ── DONE ── */}
           {state === "done" && (
             <motion.div
               key="done"
@@ -350,18 +412,19 @@ export function RecorderPage() {
                       data-testid="button-discard"
                       variant="ghost"
                       size="sm"
-                      onClick={() => { reset(); clearTargetFile(); }}
+                      onClick={() => { reset(); clearTarget(); }}
                       className="gap-1.5 text-muted-foreground"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       Discard
                     </Button>
 
+                    {/* File save / download button */}
                     {targetFile && (
                       fileSaveState === "saved" ? (
                         <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium px-3">
                           <CheckCircle2 className="w-4 h-4" />
-                          Saved to {targetFile.name}
+                          {targetFile.handle ? `Saved to ${targetFile.name}` : `Downloaded`}
                         </span>
                       ) : (
                         <Button
@@ -373,10 +436,14 @@ export function RecorderPage() {
                         >
                           {fileSaveState === "saving" ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
+                          ) : targetFile.handle ? (
                             <FileText className="w-4 h-4" />
+                          ) : (
+                            <Download className="w-4 h-4" />
                           )}
-                          Save to {targetFile.name}
+                          {targetFile.handle
+                            ? `Save to ${targetFile.name}`
+                            : `Download as .${targetFile.mode.toUpperCase()}`}
                         </Button>
                       )
                     )}
@@ -410,6 +477,7 @@ export function RecorderPage() {
             </motion.div>
           )}
 
+          {/* ── ERROR ── */}
           {state === "error" && (
             <motion.div
               key="error"
@@ -417,12 +485,13 @@ export function RecorderPage() {
               animate={{ opacity: 1 }}
               className="flex-1 flex items-center justify-center"
             >
-              <Button variant="outline" onClick={() => { reset(); clearTargetFile(); }} className="gap-2">
+              <Button variant="outline" onClick={() => { reset(); clearTarget(); }} className="gap-2">
                 <RotateCcw className="w-4 h-4" />
                 Try again
               </Button>
             </motion.div>
           )}
+
         </AnimatePresence>
       </div>
     </div>
