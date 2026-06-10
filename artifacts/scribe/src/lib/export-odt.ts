@@ -169,9 +169,11 @@ export function appendToOdtBytes(
       },
       { level: 6 }
     );
-  } catch {
-    // Fallback: rebuild from scratch so the user always gets something
-    return buildOdtBytes(date, text, null, date);
+  } catch (err) {
+    throw new Error(
+      `Could not append to ODT: ${err instanceof Error ? err.message : String(err)}. ` +
+      `Try opening a .txt journal instead, or start a new .odt file.`
+    );
   }
 }
 

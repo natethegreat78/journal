@@ -119,6 +119,7 @@ export function RecorderPage() {
       const [handle]: FileSystemFileHandle[] = await (window as any).showOpenFilePicker({
         types: FILE_PICKER_TYPES,
         multiple: false,
+        mode: "readwrite",       // request write permission upfront
       });
       const mode: FileMode = handle.name.toLowerCase().endsWith(".odt") ? "odt" : "txt";
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: true });
