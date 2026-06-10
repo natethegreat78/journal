@@ -26,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { localSummarize } from "@/lib/local-summarize";
 import { localCleanup } from "@/lib/local-cleanup";
 import { localAutotag, TAG_COLORS } from "@/lib/local-autotag";
+import { exportAsOdt } from "@/lib/export-odt";
 import { listTags, createTag } from "@workspace/api-client-react";
 
 export function TranscriptDetailPage() {
@@ -87,17 +88,29 @@ export function TranscriptDetailPage() {
     }
   };
 
-  const handleExport = (format: 'txt' | 'md') => {
+  const handleExport = (fmt: 'txt' | 'md' | 'odt') => {
     if (!transcript) return;
-    const content = format === 'md' 
-      ? `# ${transcript.title}\n\n${transcript.summary ? `## Summary\n${transcript.summary}\n\n` : ''}## Transcript\n${transcript.cleanedText || transcript.rawText}`
-      : `${transcript.title}\n\n${transcript.summary ? `Summary:\n${transcript.summary}\n\n` : ''}Transcript:\n${transcript.cleanedText || transcript.rawText}`;
-      
+    const body = transcript.cleanedText || transcript.rawText;
+
+    if (fmt === 'odt') {
+      exportAsOdt(
+        transcript.title,
+        body,
+        transcript.summary,
+        transcript.createdAt
+      );
+      return;
+    }
+
+    const content = fmt === 'md'
+      ? `# ${transcript.title}\n\n${transcript.summary ? `## Summary\n${transcript.summary}\n\n` : ''}## Transcript\n${body}`
+      : `${transcript.title}\n\n${transcript.summary ? `Summary:\n${transcript.summary}\n\n` : ''}Transcript:\n${body}`;
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${transcript.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${format}`;
+    a.download = `${transcript.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${fmt}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -233,6 +246,10 @@ export function TranscriptDetailPage() {
           <Button variant="outline" size="sm" onClick={() => handleExport('md')}>
             <Download className="w-4 h-4 mr-2" />
             .MD
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExport('odt')}>
+            <Download className="w-4 h-4 mr-2" />
+            .ODT
           </Button>
           <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDelete}>
             <Trash2 className="w-4 h-4" />
