@@ -148,11 +148,11 @@ export function RecorderPage() {
       setTargetFile({ handle, firefoxFile: null, name: handle.name, mode, append: false });
       setFileSaveState("idle");
       setFileSaveError(null);
-      await start();
+      // Don't auto-start — let the user click the mic when ready
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
     }
-  }, [start]);
+  }, []);
 
   // ── Chrome: open existing journal file ───────────────────────────────────
   const openJournalAndRecord = useCallback(async () => {
@@ -175,12 +175,12 @@ export function RecorderPage() {
   }, []);
 
   // ── Firefox: new download ─────────────────────────────────────────────────
-  const recordForDownload = useCallback(async (mode: FileMode) => {
+  const recordForDownload = useCallback((mode: FileMode) => {
     setTargetFile({ handle: null, firefoxFile: null, name: `journal-entry.${mode}`, mode, append: false });
     setFileSaveState("idle");
     setFileSaveError(null);
-    await start();
-  }, [start]);
+    // Don't auto-start — let the user click the mic when ready
+  }, []);
 
   // ── Firefox: open existing file via <input> ───────────────────────────────
   const openJournalFirefox = useCallback((mode: FileMode) => {
