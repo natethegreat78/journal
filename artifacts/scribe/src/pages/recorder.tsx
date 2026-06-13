@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
 import { useWhisper, getStoredModel, WHISPER_MODELS } from "@/hooks/use-whisper";
+import { getApiTranscriptionSettings, transcribeViaApi } from "@/lib/api-transcribe";
 import { useCreateTranscript } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -116,8 +117,20 @@ function triggerDownload(filename: string, data: string | Uint8Array, mime: stri
 }
 
 export function RecorderPage() {
+  // Decide at mount whether to use API transcription or local Whisper
+  const [apiSettings] = useState(getApiTranscriptionSettings);
+  const useApiMode = apiSettings.enabled && !!apiSettings.apiKey.trim();
+
   const [model] = useState(getStoredModel);
-  const { modelState, downloadProgress, modelError, transcribe } = useWhisper(model);
+  // Pass null when API mode is on so Whisper worker never loads
+  const { modelState, downloadProgress, modelError, transcribe: whisperTranscribe } = useWhisper(
+    useApiMode ? null : model
+  );
+
+  const transcribe = useApiMode
+    ? (blob: Blob) => transcribeViaApi(blob, apiSettings)
+    : whisperTranscribe;
+
   const { state, duration, transcript, error, start, stop, reset } = useMediaRecorder(transcribe);
   const [, setLocation] = useLocation();
   const createTranscript = useCreateTranscript();
@@ -298,10 +311,10 @@ export function RecorderPage() {
         </h1>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
           {state === "idle"        && modelState === "loading" && "Loading local Whisper model…"}
-          {state === "idle"        && modelState === "ready"   && "Press record and start speaking. Everything stays on this device."}
+          {state === "idle"        && modelState === "ready"   && (useApiMode ? "Press record and start speaking. Audio will be sent to your configured API." : "Press record and start speaking. Everything stays on this device.")}
           {state === "idle"        && modelState === "error"   && "Could not load transcription model."}
-          {state === "recording"   && "Recording — speak naturally. Your audio stays on this device."}
-          {state === "transcribing"&& "Transcribing locally with Whisper…"}
+          {state === "recording"   && "Recording — speak naturally."}
+          {state === "transcribing"&& (useApiMode ? "Sending to API for transcription…" : "Transcribing locally with Whisper…")}
           {state === "done"        && "Transcription complete. Save to your library or write to a file."}
           {state === "error"       && "Something went wrong."}
         </p>
@@ -397,7 +410,9 @@ export function RecorderPage() {
 
               {isModelReady && (
                 <p className="text-xs text-muted-foreground">
-                  Transcription runs locally · no internet required
+                  {useApiMode
+                    ? "Transcription via API · audio sent after recording stops"
+                    : "Transcription runs locally · no internet required"}
                 </p>
               )}
 
@@ -524,7 +539,9 @@ export function RecorderPage() {
             >
               <Loader2 className="w-12 h-12 animate-spin text-primary" />
               <p className="text-muted-foreground text-sm">
-                Transcribing locally with Whisper — audio never leaves your device
+                {useApiMode
+                  ? "Sending audio to API for transcription…"
+                  : "Transcribing locally with Whisper — audio never leaves your device"}
               </p>
             </motion.div>
           )}

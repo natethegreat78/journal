@@ -5,10 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink, Mic } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink, Mic, Globe } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { WHISPER_MODELS, getStoredModel, setStoredModel, type WhisperModelId } from "@/hooks/use-whisper";
+import {
+  getApiTranscriptionSettings,
+  setApiTranscriptionSettings,
+  API_TRANSCRIPTION_PRESETS,
+  type ApiTranscriptionSettings,
+} from "@/lib/api-transcribe";
 
 export function SettingsPage() {
   const { data: settings, isLoading } = useGetSettings({
@@ -23,6 +30,11 @@ export function SettingsPage() {
   const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
   const [whisperModel, setWhisperModel] = useState<WhisperModelId>(getStoredModel);
 
+  const [apiTx, setApiTx] = useState<ApiTranscriptionSettings>(getApiTranscriptionSettings);
+  const selectedPreset = API_TRANSCRIPTION_PRESETS.find(
+    (p) => p.baseUrl === apiTx.baseUrl && p.model === apiTx.model
+  ) ?? API_TRANSCRIPTION_PRESETS[2];
+
   useEffect(() => {
     if (settings) {
       setGroqApiKey(settings.groqApiKey || "");
@@ -32,6 +44,7 @@ export function SettingsPage() {
 
   const handleSave = () => {
     setStoredModel(whisperModel);
+    setApiTranscriptionSettings(apiTx);
     updateSettings.mutate(
       { data: { groqApiKey, groqModel } },
       {
@@ -94,6 +107,98 @@ export function SettingsPage() {
               <p className="text-xs text-muted-foreground">
                 Changing the model triggers a one-time download. All models are then cached in your browser.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── API Transcription ── */}
+        <Card className="bg-card/50 shadow-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 justify-between">
+              <span className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-primary" />
+                API Transcription — Optional
+              </span>
+              <Switch
+                checked={apiTx.enabled}
+                onCheckedChange={(v) => setApiTx((s) => ({ ...s, enabled: v }))}
+                aria-label="Enable API transcription"
+              />
+            </CardTitle>
+            <CardDescription>
+              Send audio to an OpenAI-compatible transcription endpoint instead of running Whisper locally.
+              Works with Groq, OpenAI, or any compatible service. Requires an internet connection.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Preset</Label>
+              <Select
+                value={selectedPreset.label}
+                onValueChange={(label) => {
+                  const p = API_TRANSCRIPTION_PRESETS.find((x) => x.label === label);
+                  if (p) setApiTx((s) => ({ ...s, baseUrl: p.baseUrl, model: p.model }));
+                }}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {API_TRANSCRIPTION_PRESETS.map((p) => (
+                    <SelectItem key={p.label} value={p.label}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apiTxKey" className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-muted-foreground" />
+                API Key
+              </Label>
+              <Input
+                id="apiTxKey"
+                type="password"
+                placeholder={selectedPreset.keyHint ?? "API key…"}
+                value={apiTx.apiKey}
+                onChange={(e) => setApiTx((s) => ({ ...s, apiKey: e.target.value }))}
+                className="font-mono bg-background"
+              />
+              {selectedPreset.keyLink && (
+                <a
+                  href={selectedPreset.keyLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary underline hover:no-underline"
+                >
+                  Get a key <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apiTxBase">Base URL</Label>
+              <Input
+                id="apiTxBase"
+                placeholder="https://api.groq.com/openai"
+                value={apiTx.baseUrl}
+                onChange={(e) => setApiTx((s) => ({ ...s, baseUrl: e.target.value }))}
+                className="font-mono bg-background text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must expose a <code>/v1/audio/transcriptions</code> endpoint (OpenAI format).
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apiTxModel">Model</Label>
+              <Input
+                id="apiTxModel"
+                placeholder="whisper-large-v3-turbo"
+                value={apiTx.model}
+                onChange={(e) => setApiTx((s) => ({ ...s, model: e.target.value }))}
+                className="font-mono bg-background text-sm"
+              />
             </div>
           </CardContent>
         </Card>

@@ -58,8 +58,15 @@ async function decodeAudioTo16kHz(blob: Blob): Promise<Float32Array> {
   return resampled.getChannelData(0);
 }
 
-export function useWhisper(model: WhisperModelId) {
-  const [modelState, setModelState] = useState<WhisperModelState>("loading");
+/**
+ * Pass `null` as model to skip loading the Whisper worker entirely
+ * (e.g. when API transcription is enabled). The hook will immediately
+ * report modelState "ready" and transcribe() will never be called.
+ */
+export function useWhisper(model: WhisperModelId | null) {
+  const [modelState, setModelState] = useState<WhisperModelState>(
+    model === null ? "ready" : "loading"
+  );
   const [downloadProgress, setDownloadProgress] = useState<WhisperDownloadProgress | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
 
@@ -70,6 +77,13 @@ export function useWhisper(model: WhisperModelId) {
   } | null>(null);
 
   useEffect(() => {
+    if (model === null) {
+      setModelState("ready");
+      setDownloadProgress(null);
+      setModelError(null);
+      return;
+    }
+
     setModelState("loading");
     setDownloadProgress(null);
     setModelError(null);
