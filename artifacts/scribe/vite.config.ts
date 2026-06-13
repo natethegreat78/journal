@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
@@ -64,6 +65,59 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    // PWA: caches the app shell so the recorder + file workflow load offline.
+    // ORT WASM files (~60 MB) are intentionally excluded — they're already
+    // cached by transformers.js in the browser's IndexedDB after first use.
+    // The /api/* routes always go to network; they fail gracefully when offline.
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: "auto",
+      devOptions: { enabled: false },
+      workbox: {
+        // Only precache app shell assets — NOT .wasm/.mjs (the ORT files)
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2}"],
+        globIgnores: ["ort/**", "**/ort/**"],
+        // Serve cached index.html for any SPA navigation when offline
+        navigateFallback: `${basePath}index.html`.replace(/\/\//g, "/"),
+        // Don't intercept API or ORT requests with the HTML fallback
+        navigateFallbackDenylist: [/^\/api\//, /\/ort\//, /\.(wasm|mjs)$/],
+        runtimeCaching: [
+          {
+            // API calls always go to network — fail loudly offline rather than silently
+            urlPattern: /\/api\//,
+            handler: "NetworkOnly",
+          },
+          {
+            // Google Fonts CSS (online-only; app degrades to system font offline)
+            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts",
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
+      manifest: {
+        name: "Journal — Local Transcription",
+        short_name: "Journal",
+        description: "Record your thoughts, transcribe locally, and journal — everything stays on your device.",
+        theme_color: "#FF3C00",
+        background_color: "#ffffff",
+        display: "standalone",
+        start_url: basePath,
+        scope: basePath,
+        icons: [
+          {
+            src: "favicon.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "any maskable",
+          },
+        ],
+      },
+    }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
