@@ -141,6 +141,7 @@ export function RecorderPage() {
   const [targetFile, setTargetFile] = useState<TargetFile | null>(null);
   const [fileSaveState, setFileSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [fileSaveError, setFileSaveError] = useState<string | null>(null);
+  const [offlineSavePrompt, setOfflineSavePrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingModeRef = useRef<FileMode | null>(null);
 
@@ -282,8 +283,6 @@ export function RecorderPage() {
       {
         onSuccess: (data) => setLocation(`/transcripts/${data.id}`),
         onError: (err) => {
-          // If offline or server unreachable, fall back to a plain-text download
-          // so the transcript is never lost.
           const isNetworkError =
             err instanceof TypeError ||
             (err instanceof Error &&
@@ -292,14 +291,8 @@ export function RecorderPage() {
                err.message.toLowerCase().includes("failed")));
 
           if (isNetworkError || !navigator.onLine) {
-            const now = new Date().toLocaleString();
-            const content = `${title}\n${now}\n\n${transcript.trim()}`;
-            const slug = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
-            triggerDownload(`${slug}.txt`, content, "text/plain");
-            toast({
-              title: "Saved as text file",
-              description: "You appear to be offline — your transcript was downloaded as a .txt file instead.",
-            });
+            // Show the format picker so the user can choose .txt / .odt / .docx
+            setOfflineSavePrompt(true);
           } else {
             toast({
               title: "Could not save to library",
@@ -311,6 +304,22 @@ export function RecorderPage() {
       }
     );
   };
+
+  const handleOfflineSave = useCallback((fmt: FileMode) => {
+    const title = transcriptTitle(transcript);
+    const slug  = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    const now   = new Date().toLocaleString();
+    if (fmt === "odt") {
+      exportAsOdt(title, transcript.trim(), null, now);
+    } else if (fmt === "docx") {
+      exportAsDocx(title, transcript.trim(), null, now);
+    } else {
+      const content = `${title}\n${now}\n\n${transcript.trim()}`;
+      triggerDownload(`${slug}.txt`, content, "text/plain");
+    }
+    setOfflineSavePrompt(false);
+    toast({ title: `Downloaded as .${fmt.toUpperCase()}`, description: "Re-save to Library when you're back online." });
+  }, [transcript, toast]);
 
   const wordCount  = transcript.trim().split(/\s+/).filter(w => w.length > 0).length;
   const modelLabel = WHISPER_MODELS.find(m => m.id === model)?.label ?? model;
@@ -661,6 +670,33 @@ export function RecorderPage() {
                         Also save to library
                       </button>
                     </>
+                  ) : offlineSavePrompt ? (
+                    /* Offline fallback: pick a download format */
+                    <div className="flex flex-col items-center gap-3">
+                      <p className="text-sm text-amber-600 font-medium text-center">
+                        You appear to be offline — choose a format to download instead:
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        {(["txt", "odt", "docx"] as const).map((fmt) => (
+                          <Button
+                            key={fmt}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOfflineSave(fmt)}
+                            className="gap-1.5"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            .{fmt.toUpperCase()}
+                          </Button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setOfflineSavePrompt(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   ) : (
                     /* No file targeted — library is the only action */
                     <Button
