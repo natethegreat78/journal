@@ -12,6 +12,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useCallback, useRef } from "react";
+import { useToast } from "@/hooks/use-toast";
 import {
   buildOdtBytes, exportAsOdt,
   appendToOdtBytes, appendToTxt,
@@ -117,6 +118,8 @@ function triggerDownload(filename: string, data: string | Uint8Array, mime: stri
 }
 
 export function RecorderPage() {
+  const { toast } = useToast();
+
   // Decide at mount whether to use API transcription or local Whisper
   const [apiSettings] = useState(getApiTranscriptionSettings);
   const useApiMode = apiSettings.enabled && !!apiSettings.apiKey.trim();
@@ -276,7 +279,36 @@ export function RecorderPage() {
     const title = transcriptTitle(transcript);
     createTranscript.mutate(
       { data: { title, rawText: transcript, durationSeconds: duration } },
-      { onSuccess: (data) => setLocation(`/transcripts/${data.id}`) }
+      {
+        onSuccess: (data) => setLocation(`/transcripts/${data.id}`),
+        onError: (err) => {
+          // If offline or server unreachable, fall back to a plain-text download
+          // so the transcript is never lost.
+          const isNetworkError =
+            err instanceof TypeError ||
+            (err instanceof Error &&
+              (err.message.toLowerCase().includes("fetch") ||
+               err.message.toLowerCase().includes("network") ||
+               err.message.toLowerCase().includes("failed")));
+
+          if (isNetworkError || !navigator.onLine) {
+            const now = new Date().toLocaleString();
+            const content = `${title}\n${now}\n\n${transcript.trim()}`;
+            const slug = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+            triggerDownload(`${slug}.txt`, content, "text/plain");
+            toast({
+              title: "Saved as text file",
+              description: "You appear to be offline — your transcript was downloaded as a .txt file instead.",
+            });
+          } else {
+            toast({
+              title: "Could not save to library",
+              description: err instanceof Error ? err.message : "An unexpected error occurred.",
+              variant: "destructive",
+            });
+          }
+        },
+      }
     );
   };
 
