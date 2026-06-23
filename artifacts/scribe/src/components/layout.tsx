@@ -1,12 +1,14 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Mic, Library, Settings, Moon, Sun } from "lucide-react";
+import { Mic, Library, Settings, Moon, Sun, Download } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
+import { usePwaInstall } from "@/hooks/use-pwa-install";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { theme, setTheme } = useTheme();
+  const { canInstall, install } = usePwaInstall();
 
   const navItems = [
     { href: "/", label: "Record", icon: Mic },
@@ -44,7 +46,18 @@ export function Layout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-border/50">
+        <div className="p-4 border-t border-border/50 space-y-1">
+          {canInstall && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-primary hover:text-primary hover:bg-primary/10"
+              onClick={install}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Install App
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
