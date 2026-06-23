@@ -23,8 +23,8 @@ import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { localSummarize } from "@/lib/local-summarize";
 import { localCleanup } from "@/lib/local-cleanup";
+import { useSummarizer } from "@/hooks/use-summarizer";
 import { localAutotag, TAG_COLORS } from "@/lib/local-autotag";
 import { exportAsOdt } from "@/lib/export-odt";
 import { exportAsDocx } from "@/lib/export-docx";
@@ -54,7 +54,7 @@ export function TranscriptDetailPage() {
 
   const [title, setTitle] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const [localSummarizing, setLocalSummarizing] = useState(false);
+  const summarizer = useSummarizer();
   const [localCleaning, setLocalCleaning] = useState(false);
   const [localAutotagging, setLocalAutotagging] = useState(false);
   const [showCleaned, setShowCleaned] = useState(true);
@@ -199,28 +199,30 @@ export function TranscriptDetailPage() {
     }
   };
 
-  const handleSummarize = () => {
+  const handleSummarize = async () => {
     if (hasApiKey) {
       wrapAIMutation(summarize, "Summary");
       return;
     }
     if (!transcript) return;
-    setLocalSummarizing(true);
-    const text = transcript.cleanedText ?? transcript.rawText;
-    const summary = localSummarize(text);
-    updateTranscript.mutate(
-      { id, data: { summary } },
-      {
-        onSuccess: (data) => {
-          queryClient.setQueryData(getGetTranscriptQueryKey(id), data);
-          toast({ title: "Local summary generated" });
-        },
-        onError: () => {
-          toast({ title: "Could not save summary", variant: "destructive" });
-        },
-        onSettled: () => setLocalSummarizing(false),
-      }
-    );
+    try {
+      const text = transcript.cleanedText ?? transcript.rawText;
+      const summary = await summarizer.summarize(text);
+      updateTranscript.mutate(
+        { id, data: { summary } },
+        {
+          onSuccess: (data) => {
+            queryClient.setQueryData(getGetTranscriptQueryKey(id), data);
+            toast({ title: "Summary generated" });
+          },
+          onError: () => {
+            toast({ title: "Could not save summary", variant: "destructive" });
+          },
+        }
+      );
+    } catch {
+      toast({ title: "Summarization failed", variant: "destructive" });
+    }
   };
 
   if (isLoading || !transcript) {
@@ -291,28 +293,32 @@ export function TranscriptDetailPage() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-8 bg-card/50 p-2 rounded-lg border border-border/50 shadow-sm w-max">
+      <div className="flex gap-2 mb-4 bg-card/50 p-2 rounded-lg border border-border/50 shadow-sm w-max">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button 
               variant="ghost" 
               size="sm" 
               className="gap-2"
-              disabled={summarize.isPending || localSummarizing}
+              disabled={summarize.isPending || summarizer.isBusy}
               onClick={handleSummarize}
             >
-              {(summarize.isPending || localSummarizing) ? (
+              {(summarize.isPending || summarizer.isBusy) ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : hasApiKey ? (
                 <Wand2 className="w-4 h-4 text-primary" />
               ) : (
                 <Cpu className="w-4 h-4 text-primary" />
               )}
-              Summarize
+              {summarizer.isDownloading ? "Downloading model…" : summarizer.isSummarizing ? "Summarizing…" : "Summarize"}
             </Button>
           </TooltipTrigger>
           {!hasApiKey && (
-            <TooltipContent>Extractive summary — runs locally, no API key needed</TooltipContent>
+            <TooltipContent>
+              {summarizer.isModelLoaded
+                ? "AI summary — runs locally, no API key needed"
+                : "Downloads a ~300 MB model on first use, then runs fully offline"}
+            </TooltipContent>
           )}
         </Tooltip>
 
@@ -362,6 +368,25 @@ export function TranscriptDetailPage() {
           )}
         </Tooltip>
       </div>
+
+      {summarizer.isDownloading && summarizer.downloadProgress && (
+        <div className="mb-6 p-3 rounded-lg border border-border/50 bg-card/50 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Downloading AI model (first use only — cached after this)
+            </span>
+            <span>{Math.round(summarizer.downloadProgress.progress)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-300"
+              style={{ width: `${summarizer.downloadProgress.progress}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{summarizer.downloadProgress.file}</p>
+        </div>
+      )}
 
       <div className="space-y-8 flex-1 overflow-y-auto pb-12">
         {transcript.summary && (
