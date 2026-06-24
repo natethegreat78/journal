@@ -10,10 +10,42 @@ export interface WhisperDownloadProgress {
 }
 
 export const WHISPER_MODELS = [
-  { id: "onnx-community/whisper-tiny.en", label: "Tiny — Fastest (~40 MB, English)", description: "Best for quick notes" },
-  { id: "onnx-community/whisper-tiny", label: "Tiny — Fastest (~40 MB, multilingual)", description: "Best for quick notes" },
-  { id: "onnx-community/whisper-base.en", label: "Base — Balanced (~80 MB, English)", description: "Good accuracy, still fast" },
-  { id: "onnx-community/whisper-base", label: "Base — Balanced (~80 MB, multilingual)", description: "Good accuracy, still fast" },
+  {
+    id: "onnx-community/whisper-tiny.en",
+    label: "Whisper Tiny (English)",
+    description: "Fastest to download and run. English only. Great for quick notes.",
+    sizeMb: 40,
+  },
+  {
+    id: "onnx-community/whisper-tiny",
+    label: "Whisper Tiny (Multilingual)",
+    description: "Same speed as Tiny English but supports 99 languages.",
+    sizeMb: 40,
+  },
+  {
+    id: "onnx-community/whisper-base.en",
+    label: "Whisper Base (English)",
+    description: "Noticeably more accurate than Tiny with a modest size increase.",
+    sizeMb: 80,
+  },
+  {
+    id: "onnx-community/whisper-base",
+    label: "Whisper Base (Multilingual)",
+    description: "Base accuracy across 99 languages. Good general-purpose choice.",
+    sizeMb: 80,
+  },
+  {
+    id: "onnx-community/whisper-small.en",
+    label: "Whisper Small (English)",
+    description: "High accuracy for English. Best balance of quality and size.",
+    sizeMb: 244,
+  },
+  {
+    id: "onnx-community/whisper-small",
+    label: "Whisper Small (Multilingual)",
+    description: "High accuracy across 99 languages. Recommended for non-English speech.",
+    sizeMb: 244,
+  },
 ] as const;
 
 export type WhisperModelId = (typeof WHISPER_MODELS)[number]["id"];

@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import {
   useWhisper,
   getStoredModel,
+  setStoredModel,
   WHISPER_MODELS,
   type WhisperModelState,
   type WhisperDownloadProgress,
@@ -20,6 +21,8 @@ interface WhisperContextValue {
   model: WhisperModelId | null;
   /** Human-readable label for the current model */
   modelLabel: string;
+  /** Switch to a different Whisper model — downloads if not cached, then activates */
+  loadModel: (id: WhisperModelId) => void;
 }
 
 const WhisperContext = createContext<WhisperContextValue | null>(null);
@@ -32,7 +35,7 @@ const WhisperContext = createContext<WhisperContextValue | null>(null);
 export function WhisperProvider({ children }: { children: ReactNode }) {
   const [apiSettings] = useState(getApiTranscriptionSettings);
   const useApiMode = apiSettings.enabled && !!apiSettings.apiKey.trim();
-  const [model] = useState(getStoredModel);
+  const [model, setModel] = useState<WhisperModelId>(getStoredModel);
 
   const { modelState, downloadProgress, modelError, transcribe } = useWhisper(
     useApiMode ? null : model
@@ -40,6 +43,11 @@ export function WhisperProvider({ children }: { children: ReactNode }) {
 
   const modelLabel =
     WHISPER_MODELS.find((m) => m.id === model)?.label ?? model;
+
+  const loadModel = useCallback((id: WhisperModelId) => {
+    setStoredModel(id);
+    setModel(id);
+  }, []);
 
   return (
     <WhisperContext.Provider
@@ -51,6 +59,7 @@ export function WhisperProvider({ children }: { children: ReactNode }) {
         useApiMode,
         model: useApiMode ? null : model,
         modelLabel,
+        loadModel,
       }}
     >
       {children}

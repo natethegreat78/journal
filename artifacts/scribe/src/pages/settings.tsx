@@ -6,16 +6,116 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink, Mic, Globe } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Key, HardDrive, Cpu, Loader2, Save, ExternalLink, Mic, Globe, Brain } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { WHISPER_MODELS, getStoredModel, setStoredModel, type WhisperModelId } from "@/hooks/use-whisper";
+import { WHISPER_MODELS, type WhisperModelId } from "@/hooks/use-whisper";
+import { useWhisperContext } from "@/context/whisper-context";
+import {
+  SUMMARIZATION_MODELS,
+  getStoredSummarizationModel,
+  setStoredSummarizationModel,
+  type SummarizationModelId,
+} from "@/lib/summarization-models";
 import {
   getApiTranscriptionSettings,
   setApiTranscriptionSettings,
   API_TRANSCRIPTION_PRESETS,
   type ApiTranscriptionSettings,
 } from "@/lib/api-transcribe";
+import { ModelCard, type ModelCardStatus } from "@/components/model-card";
+
+// ─── Summarization pre-loader ────────────────────────────────────────────────
+
+interface PreloadState {
+  status: ModelCardStatus;
+  progress: number | null;
+  file: string;
+}
+
+function useSummarizationPreloader() {
+  const [states, setStates] = useState<Record<string, PreloadState>>({});
+  const workersRef = useRef<Record<string, Worker>>({});
+
+  const preload = useCallback((modelId: string) => {
+    // Don't start a second download for the same model
+    if (workersRef.current[modelId]) return;
+
+    setStates((prev) => ({
+      ...prev,
+      [modelId]: { status: "loading", progress: null, file: "" },
+    }));
+
+    const worker = new Worker(
+      new URL("../workers/summarize.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+    workersRef.current[modelId] = worker;
+
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data as {
+        type: string;
+        info?: unknown;
+        message?: string;
+      };
+
+      if (msg.type === "progress") {
+        const info = msg.info as {
+          status?: string;
+          file?: string;
+          progress?: number;
+        } | undefined;
+        if (info?.status === "download") {
+          setStates((prev) => ({
+            ...prev,
+            [modelId]: {
+              status: "loading",
+              progress: info.progress ?? null,
+              file: info.file ?? "",
+            },
+          }));
+        }
+      } else if (msg.type === "ready") {
+        setStates((prev) => ({
+          ...prev,
+          [modelId]: { status: "ready", progress: null, file: "" },
+        }));
+        worker.terminate();
+        delete workersRef.current[modelId];
+      } else if (msg.type === "error") {
+        setStates((prev) => ({
+          ...prev,
+          [modelId]: { status: "error", progress: null, file: "" },
+        }));
+        worker.terminate();
+        delete workersRef.current[modelId];
+      }
+    };
+
+    worker.onerror = () => {
+      setStates((prev) => ({
+        ...prev,
+        [modelId]: { status: "error", progress: null, file: "" },
+      }));
+      worker.terminate();
+      delete workersRef.current[modelId];
+    };
+
+    worker.postMessage({ type: "load", model: modelId });
+  }, []);
+
+  // Terminate all workers on unmount
+  useEffect(() => {
+    const ref = workersRef.current;
+    return () => {
+      Object.values(ref).forEach((w) => w.terminate());
+    };
+  }, []);
+
+  return { states, preload };
+}
+
+// ─── Settings page ────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   const { data: settings, isLoading } = useGetSettings({
@@ -28,12 +128,26 @@ export function SettingsPage() {
 
   const [groqApiKey, setGroqApiKey] = useState("");
   const [groqModel, setGroqModel] = useState("llama-3.3-70b-versatile");
-  const [whisperModel, setWhisperModel] = useState<WhisperModelId>(getStoredModel);
 
   const [apiTx, setApiTx] = useState<ApiTranscriptionSettings>(getApiTranscriptionSettings);
   const selectedPreset = API_TRANSCRIPTION_PRESETS.find(
     (p) => p.baseUrl === apiTx.baseUrl && p.model === apiTx.model
   ) ?? API_TRANSCRIPTION_PRESETS[2];
+
+  // Whisper model — controlled from WhisperContext
+  const {
+    model: activeWhisperModel,
+    modelState: whisperState,
+    downloadProgress: whisperProgress,
+    modelError: whisperError,
+    loadModel: loadWhisperModel,
+  } = useWhisperContext();
+
+  // Summarization model — controlled locally
+  const [activeSumModel, setActiveSumModel] = useState<SummarizationModelId>(
+    getStoredSummarizationModel
+  );
+  const sumPreloader = useSummarizationPreloader();
 
   useEffect(() => {
     if (settings) {
@@ -43,7 +157,6 @@ export function SettingsPage() {
   }, [settings]);
 
   const handleSave = () => {
-    setStoredModel(whisperModel);
     setApiTranscriptionSettings(apiTx);
     updateSettings.mutate(
       { data: { groqApiKey, groqModel } },
@@ -57,6 +170,16 @@ export function SettingsPage() {
         }
       }
     );
+  };
+
+  const handleSelectSumModel = (id: SummarizationModelId) => {
+    setStoredSummarizationModel(id);
+    setActiveSumModel(id);
+    // Pre-download if not already cached/downloading
+    const state = sumPreloader.states[id];
+    if (!state || (state.status !== "loading" && state.status !== "ready")) {
+      sumPreloader.preload(id);
+    }
   };
 
   if (isLoading) {
@@ -75,39 +198,98 @@ export function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+
+        {/* ── Whisper transcription models ── */}
         <Card className="bg-card/50 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mic className="w-5 h-5 text-primary" />
-              Transcription — Runs Locally
+              Transcription Models
             </CardTitle>
             <CardDescription>
-              Whisper runs entirely in your browser using WebAssembly. Audio never leaves your device.
-              The model is downloaded once and cached for offline use.
+              Whisper runs entirely in your browser via WebAssembly — audio never leaves your device.
+              Models are downloaded once and cached for offline use. Larger models are more accurate
+              but take longer to download.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Whisper Model</Label>
-              <Select
-                value={whisperModel}
-                onValueChange={(val) => setWhisperModel(val as WhisperModelId)}
-              >
-                <SelectTrigger className="bg-background" data-testid="select-whisper-model">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {WHISPER_MODELS.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Changing the model triggers a one-time download. All models are then cached in your browser.
-              </p>
-            </div>
+          <CardContent className="space-y-2">
+            {WHISPER_MODELS.map((m) => {
+              const isActive = activeWhisperModel === m.id;
+              return (
+                <ModelCard
+                  key={m.id}
+                  label={m.label}
+                  description={m.description}
+                  sizeMb={m.sizeMb}
+                  isActive={isActive}
+                  status={
+                    isActive
+                      ? whisperState === "loading"
+                        ? "loading"
+                        : whisperState === "error"
+                        ? "error"
+                        : "ready"
+                      : "idle"
+                  }
+                  downloadProgress={
+                    isActive && whisperProgress
+                      ? whisperProgress.progress
+                      : null
+                  }
+                  downloadFile={
+                    isActive && whisperProgress ? whisperProgress.file : undefined
+                  }
+                  error={isActive ? whisperError : null}
+                  onSelect={() => loadWhisperModel(m.id as WhisperModelId)}
+                  selectLabel="Download & Use"
+                />
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* ── Summarization models ── */}
+        <Card className="bg-card/50 shadow-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-primary" />
+              Local Summarization Models
+            </CardTitle>
+            <CardDescription>
+              Summarization runs in your browser — no internet required after the initial download.
+              All models produce abstractive summaries; the larger ones handle complex transcripts
+              better. Used when you click "Summarize" on a transcript without a Groq API key.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {SUMMARIZATION_MODELS.map((m) => {
+              const isActive = activeSumModel === m.id;
+              const preloadState = sumPreloader.states[m.id];
+              return (
+                <ModelCard
+                  key={m.id}
+                  label={m.label}
+                  description={m.description}
+                  sizeMb={m.sizeMb}
+                  isActive={isActive}
+                  status={
+                    isActive && preloadState
+                      ? preloadState.status
+                      : isActive
+                      ? "idle"
+                      : preloadState?.status ?? "idle"
+                  }
+                  downloadProgress={preloadState?.progress ?? null}
+                  downloadFile={preloadState?.file}
+                  onSelect={() => handleSelectSumModel(m.id)}
+                  selectLabel={
+                    preloadState?.status === "ready"
+                      ? "Use This Model"
+                      : "Download & Use"
+                  }
+                />
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -203,6 +385,7 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* ── AI Features (Groq) ── */}
         <Card className="bg-card/50 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -271,6 +454,7 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* ── Storage ── */}
         <Card className="bg-card/50 shadow-sm border-border/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

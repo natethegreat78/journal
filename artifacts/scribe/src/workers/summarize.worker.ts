@@ -7,17 +7,16 @@ env.useBrowserCache = true;
 type SummarizePipeline = Awaited<ReturnType<typeof pipeline<"summarization">>>;
 
 let summarizer: SummarizePipeline | null = null;
+let loadedModel = "";
 
-const MODEL = "Xenova/distilbart-cnn-6-6";
-
-// distilbart-cnn-6-6 has a 1024 token limit. 700 words ≈ 900 tokens — safe headroom.
+// distilbart models have a 1024 token limit. 700 words ≈ 900 tokens — safe headroom.
 const MAX_WORDS_PER_CHUNK = 700;
 
-function chunkText(text: string): string[] {
+function chunkText(text: string, maxWords = MAX_WORDS_PER_CHUNK): string[] {
   const words = text.trim().split(/\s+/);
   const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += MAX_WORDS_PER_CHUNK) {
-    chunks.push(words.slice(i, i + MAX_WORDS_PER_CHUNK).join(" "));
+  for (let i = 0; i < words.length; i += maxWords) {
+    chunks.push(words.slice(i, i + maxWords).join(" "));
   }
   return chunks;
 }
@@ -29,24 +28,31 @@ function extractSummaryText(result: unknown): string {
   return (result as { summary_text?: string })?.summary_text ?? "";
 }
 
-async function getSummarizer(): Promise<SummarizePipeline> {
-  if (summarizer) return summarizer;
-  summarizer = await pipeline("summarization", MODEL, {
+async function getSummarizer(model: string): Promise<SummarizePipeline> {
+  if (summarizer && loadedModel === model) return summarizer;
+  summarizer = await pipeline("summarization", model, {
     dtype: "fp32",
     device: "wasm",
     progress_callback: (info: unknown) => {
       self.postMessage({ type: "progress", info });
     },
   });
+  loadedModel = model;
   return summarizer;
 }
 
 self.addEventListener("message", async (event: MessageEvent) => {
-  const { type, text } = event.data as { type: string; text?: string };
+  const { type, text, model } = event.data as {
+    type: string;
+    text?: string;
+    model?: string;
+  };
+
+  const modelId = model ?? "Xenova/distilbart-cnn-6-6";
 
   if (type === "load") {
     try {
-      await getSummarizer();
+      await getSummarizer(modelId);
       self.postMessage({ type: "ready" });
     } catch (err) {
       self.postMessage({
@@ -59,7 +65,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
 
   if (type === "summarize" && text) {
     try {
-      const s = await getSummarizer();
+      const s = await getSummarizer(modelId);
       const chunks = chunkText(text);
       const chunkSummaries: string[] = [];
 
