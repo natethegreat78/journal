@@ -9,8 +9,49 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "electron:build": "npm run build && tsc -p electron/tsconfig.json && electron-builder --mac --x64",
+    "electron:build": "vite build --config vite.electron.config.ts && tsc -p electron/tsconfig.json && electron-builder --mac --x64 --publish never",
     "electron:dev": "concurrently \"vite --config vite.config.ts\" \"wait-on http://localhost:5173 && electron .\""
+  },
+  "build": {
+    "appId": "com.journal.scribe",
+    "productName": "Journal",
+    "copyright": "Copyright © 2024",
+    "directories": {
+      "output": "dist/release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/electron/**/*",
+      "dist/public/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
+      "**/*.node"
+    ],
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "npmRebuild": true,
+    "nodeGypRebuild": false
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

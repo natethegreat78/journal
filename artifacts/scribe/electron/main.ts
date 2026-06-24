@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, shell, ipcMain, dialog, session } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer } from "./server.js";
@@ -19,18 +19,25 @@ function createWindow(port: number) {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Allow SharedArrayBuffer — required by ONNX Runtime WASM (Whisper)
+      // The Express server sets COOP/COEP headers so Chromium enables it.
+      sandbox: false,
     },
-    backgroundColor: "#1a1512",
-    title: "Scribe",
+    backgroundColor: "#FAFAF8",
+    title: "Journal",
   });
 
   const isDev = !app.isPackaged;
 
   if (isDev) {
-    mainWindow.loadURL(`http://localhost:5173`);
+    // Dev: Vite dev server
+    mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist/public/index.html"));
+    // Production: serve from the Electron Express server over HTTP.
+    // This is intentional — loading over file:// would break /ort/ WASM paths
+    // inside Web Workers. HTTP serving makes all relative paths work correctly.
+    mainWindow.loadURL(`http://127.0.0.1:${port}`);
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -44,11 +51,27 @@ function createWindow(port: number) {
 }
 
 async function startApp() {
+  // Allow SharedArrayBuffer across all sessions (required by ONNX Runtime WASM threads)
+  app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
+
   const port = await createServer();
   serverPort = port;
 
   app.whenReady().then(() => {
+    // Set COOP/COEP on the default session so SharedArrayBuffer is enabled
+    // even if some ORT builds check the browser context.
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Cross-Origin-Opener-Policy": ["same-origin"],
+          "Cross-Origin-Embedder-Policy": ["require-corp"],
+        },
+      });
+    });
+
     createWindow(port);
+
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow(port);
     });

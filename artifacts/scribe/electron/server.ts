@@ -1,8 +1,9 @@
 /**
  * SQLite-backed Express server for Electron desktop app.
- * This is a standalone server that runs inside the Electron main process
- * and mirrors the PostgreSQL-backed server used in the Replit web environment.
- * All data is stored in ~/Library/Application Support/Scribe/scribe.db
+ * Runs inside the Electron main process — mirrors the PostgreSQL-backed server
+ * used in the Replit web environment. Also serves the built React app and ORT
+ * WASM files so all assets load over HTTP (necessary for /ort/ paths to resolve
+ * correctly inside Web Workers that run Whisper/ONNX).
  */
 import express from "express";
 import cors from "cors";
@@ -16,7 +17,7 @@ function getDataDir(): string {
   try {
     return app.getPath("userData");
   } catch {
-    return path.join(os.homedir(), "Library", "Application Support", "Scribe");
+    return path.join(os.homedir(), "Library", "Application Support", "Journal");
   }
 }
 
@@ -25,7 +26,7 @@ function openDb(): Database.Database {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
-  const dbPath = path.join(dataDir, "scribe.db");
+  const dbPath = path.join(dataDir, "journal.db");
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
@@ -102,7 +103,7 @@ function upsertSetting(db: Database.Database, key: string, value: string) {
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
 }
 
-async function callOpenAI(apiKey: string, model: string, systemPrompt: string, userContent: string): Promise<string> {
+async function callGroq(apiKey: string, model: string, systemPrompt: string, userContent: string): Promise<string> {
   const { default: fetch } = await import("node-fetch");
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -113,7 +114,7 @@ async function callOpenAI(apiKey: string, model: string, systemPrompt: string, u
       temperature: 0.3,
     }),
   });
-  if (!res.ok) throw new Error(`OpenAI API error ${res.status}`);
+  if (!res.ok) throw new Error(`Groq API error ${res.status}`);
   const json = await res.json() as { choices: { message: { content: string } }[] };
   return json.choices[0]?.message?.content?.trim() ?? "";
 }
@@ -124,8 +125,39 @@ export function createServer(): Promise<number> {
     initSchema(db);
 
     const expressApp = express();
+
+    // Allow SharedArrayBuffer in the renderer — required for ONNX Runtime WASM
+    // threads (used by Whisper). Electron won't enforce COOP/COEP by default
+    // but some ONNX builds still check for it.
+    expressApp.use((_req, res, next) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      next();
+    });
+
     expressApp.use(cors());
     expressApp.use(express.json());
+
+    // Serve the built React app + ORT WASM files over HTTP.
+    // This is the critical piece: by serving from HTTP (not file://),
+    // relative paths like /ort/*.wasm resolve correctly inside Web Workers.
+    const publicDir = path.join(__dirname, "..", "dist", "public");
+    if (fs.existsSync(publicDir)) {
+      expressApp.use(
+        express.static(publicDir, {
+          setHeaders(res, filePath) {
+            if (filePath.endsWith(".wasm")) {
+              res.setHeader("Content-Type", "application/wasm");
+            }
+            if (filePath.endsWith(".mjs")) {
+              res.setHeader("Content-Type", "text/javascript");
+            }
+            res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          },
+        })
+      );
+    }
 
     // Health
     expressApp.get("/api/healthz", (_req, res) => {
@@ -183,7 +215,7 @@ export function createServer(): Promise<number> {
       res.status(201).json(getTranscriptWithTags(db, id));
     });
 
-    // Stats
+    // Stats — must come BEFORE /:id
     expressApp.get("/api/transcripts/stats", (_req, res) => {
       const counts = db.prepare("SELECT COUNT(*) as totalCount, COALESCE(SUM(word_count),0) as totalWords, COALESCE(SUM(duration_seconds),0) as totalDurationSeconds FROM transcripts").get() as Record<string, number>;
       const recentRow = db.prepare("SELECT COUNT(*) as cnt FROM transcripts WHERE created_at >= datetime('now', '-7 days')").get() as { cnt: number };
@@ -230,10 +262,10 @@ export function createServer(): Promise<number> {
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
       const apiKey = getSetting(db, "groqApiKey");
-      if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      if (!apiKey) return res.status(400).json({ error: "No Groq API key configured. Add it in Settings, or use local summarization." });
       const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
-        const summary = await callOpenAI(apiKey, model, "You are a concise summarizer. Produce a clear, well-structured summary of the transcript in 3-5 sentences. Return only the summary text.", t.cleanedText ?? t.rawText);
+        const summary = await callGroq(apiKey, model, "You are a concise summarizer. Produce a clear, well-structured summary of the transcript in 3-5 sentences. Return only the summary text.", t.cleanedText ?? t.rawText);
         db.prepare("UPDATE transcripts SET summary = ?, updated_at = datetime('now') WHERE id = ?").run(summary, id);
         res.json(getTranscriptWithTags(db, id));
       } catch (err) {
@@ -247,10 +279,10 @@ export function createServer(): Promise<number> {
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
       const apiKey = getSetting(db, "groqApiKey");
-      if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      if (!apiKey) return res.status(400).json({ error: "No Groq API key configured. Add it in Settings." });
       const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
-        const cleaned = await callOpenAI(apiKey, model,
+        const cleaned = await callGroq(apiKey, model,
           "Remove filler words (um, uh, like, you know, basically, literally, actually, right, so, well, I mean, kind of, sort of) and fix minor grammatical issues. Preserve all substantive content and the speaker's tone. Return only the cleaned text.",
           t.rawText);
         db.prepare("UPDATE transcripts SET cleaned_text = ?, updated_at = datetime('now') WHERE id = ?").run(cleaned, id);
@@ -266,13 +298,13 @@ export function createServer(): Promise<number> {
       const t = getTranscriptWithTags(db, id);
       if (!t) return res.status(404).json({ error: "Not found" });
       const apiKey = getSetting(db, "groqApiKey");
-      if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      if (!apiKey) return res.status(400).json({ error: "No Groq API key configured. Add it in Settings." });
       const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
-        const tagsJson = await callOpenAI(apiKey, model,
+        const tagsJson = await callGroq(apiKey, model,
           "Return 3-6 relevant tags as a JSON array of short lowercase strings (1-3 words each). Return only valid JSON array, no other text. Example: [\"meeting notes\",\"project planning\"]",
           t.cleanedText ?? t.rawText);
-        let tagNames: string[] = JSON.parse(tagsJson.match(/\[.*?\]/s)?.[0] ?? tagsJson);
+        const tagNames: string[] = JSON.parse(tagsJson.match(/\[.*?\]/s)?.[0] ?? tagsJson);
         const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#14b8a6"];
         const tagIds: number[] = [];
         for (const name of tagNames.slice(0, 6)) {
@@ -315,10 +347,9 @@ export function createServer(): Promise<number> {
       });
     });
     expressApp.patch("/api/settings", (req, res) => {
-      const { groqApiKey, groqModel, storageDir } = req.body;
+      const { groqApiKey, groqModel } = req.body;
       if (groqApiKey !== undefined) upsertSetting(db, "groqApiKey", groqApiKey);
       if (groqModel !== undefined) upsertSetting(db, "groqModel", groqModel);
-      if (storageDir !== undefined) upsertSetting(db, "storageDir", storageDir);
       const apiKey = getSetting(db, "groqApiKey");
       res.json({
         groqApiKey: apiKey ? "****" + apiKey.slice(-4) : null,
@@ -327,7 +358,16 @@ export function createServer(): Promise<number> {
       });
     });
 
-    // Find available port and start
+    // SPA fallback — serve index.html for any unmatched GET (client-side routing)
+    expressApp.get("*", (_req, res) => {
+      const indexPath = path.join(__dirname, "..", "dist", "public", "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("App not built. Run: pnpm --filter @workspace/scribe run electron:build");
+      }
+    });
+
     const server = expressApp.listen(0, "127.0.0.1", () => {
       const addr = server.address() as { port: number };
       resolve(addr.port);
