@@ -120,24 +120,31 @@ export function DownloadPage() {
 
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
-              variant="outline"
               className="gap-2"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "https://github.com/your-org/journal/releases/latest/download/Journal.dmg";
-                a.click();
-              }}
-              disabled
+              asChild
             >
-              <Apple className="w-4 h-4" />
-              Download .dmg
-              <Badge variant="secondary" className="ml-1 text-xs">Coming soon</Badge>
+              <a
+                href="https://github.com/natethegreat78/transciber/releases/latest/download/Journal.dmg"
+                download
+              >
+                <Apple className="w-4 h-4" />
+                Download .dmg
+              </a>
+            </Button>
+            <Button variant="outline" asChild>
+              <a
+                href="https://github.com/natethegreat78/transciber/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                All releases
+              </a>
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
             Build it yourself: see{" "}
             <a
-              href="https://github.com/your-org/journal#building-the-mac-app"
+              href="https://github.com/natethegreat78/transciber/blob/main/artifacts/scribe/BUILDING_MAC_APP.md"
               className="underline underline-offset-2 hover:text-foreground"
               target="_blank"
               rel="noopener noreferrer"
