@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
+import { WhisperProvider } from "@/context/whisper-context";
 import { RecorderPage } from "@/pages/recorder";
 import { TranscriptsPage } from "@/pages/transcripts";
 import { TranscriptDetailPage } from "@/pages/transcript-detail";
@@ -32,7 +33,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <WhisperProvider>
+            <Router />
+          </WhisperProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

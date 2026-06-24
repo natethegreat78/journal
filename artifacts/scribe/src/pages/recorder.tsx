@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useMediaRecorder } from "@/hooks/use-media-recorder";
-import { useWhisper, getStoredModel, WHISPER_MODELS } from "@/hooks/use-whisper";
-import { getApiTranscriptionSettings, transcribeViaApi } from "@/lib/api-transcribe";
+import { useWhisperContext } from "@/context/whisper-context";
+import { transcribeViaApi, getApiTranscriptionSettings } from "@/lib/api-transcribe";
 import { useCreateTranscript } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -120,16 +120,11 @@ function triggerDownload(filename: string, data: string | Uint8Array, mime: stri
 export function RecorderPage() {
   const { toast } = useToast();
 
-  // Decide at mount whether to use API transcription or local Whisper
+  // Model is loaded eagerly at app root (WhisperProvider) so it's ready before
+  // the user navigates here — and cached offline after the first online session.
+  const { modelState, downloadProgress, modelError, transcribe: whisperTranscribe, useApiMode, model } = useWhisperContext();
+
   const [apiSettings] = useState(getApiTranscriptionSettings);
-  const useApiMode = apiSettings.enabled && !!apiSettings.apiKey.trim();
-
-  const [model] = useState(getStoredModel);
-  // Pass null when API mode is on so Whisper worker never loads
-  const { modelState, downloadProgress, modelError, transcribe: whisperTranscribe } = useWhisper(
-    useApiMode ? null : model
-  );
-
   const transcribe = useApiMode
     ? (blob: Blob) => transcribeViaApi(blob, apiSettings)
     : whisperTranscribe;
@@ -322,7 +317,7 @@ export function RecorderPage() {
   }, [transcript, toast]);
 
   const wordCount  = transcript.trim().split(/\s+/).filter(w => w.length > 0).length;
-  const modelLabel = WHISPER_MODELS.find(m => m.id === model)?.label ?? model;
+  const { modelLabel } = useWhisperContext();
   const isModelReady = modelState === "ready";
 
   const fileBadgeLabel = targetFile
