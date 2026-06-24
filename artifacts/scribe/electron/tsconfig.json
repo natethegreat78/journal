@@ -11,6 +11,8 @@
     "emitDeclarationOnly": false,
     "allowImportingTsExtensions": false,
     "lib": ["ES2022"],
-    "types": ["node"]
+    "types": ["node"],
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false
   }
 }
