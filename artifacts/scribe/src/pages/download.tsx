@@ -121,7 +121,7 @@ export function DownloadPage() {
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
               className="gap-2"
-              onClick={() => window.open("https://github.com/natethegreat78/transciber/releases/latest", "_blank")}
+              onClick={() => window.open("https://github.com/natethegreat78/journal/releases/latest", "_blank")}
             >
               <Apple className="w-4 h-4" />
               Download .dmg
@@ -130,7 +130,7 @@ export function DownloadPage() {
           <p className="text-xs text-muted-foreground">
             Build it yourself: see{" "}
             <a
-              href="https://github.com/natethegreat78/transciber/blob/main/artifacts/scribe/BUILDING_MAC_APP.md"
+              href="https://github.com/natethegreat78/journal/blob/main/artifacts/scribe/BUILDING_MAC_APP.md"
               className="underline underline-offset-2 hover:text-foreground"
               target="_blank"
               rel="noopener noreferrer"
