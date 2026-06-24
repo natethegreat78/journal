@@ -265,7 +265,7 @@ export function createServer(): Promise<number> {
       if (!apiKey) return res.status(400).json({ error: "No Groq API key configured. Add it in Settings, or use local summarization." });
       const model = getSetting(db, "groqModel") ?? "llama-3.3-70b-versatile";
       try {
-        const summary = await callGroq(apiKey, model, "You are a concise summarizer. Produce a clear, well-structured summary of the transcript in 3-5 sentences. Return only the summary text.", t.cleanedText ?? t.rawText);
+        const summary = await callGroq(apiKey, model, "You are a concise summarizer. Produce a clear, well-structured summary of the transcript in 3-5 sentences. Return only the summary text.", (t.cleanedText ?? t.rawText) as string);
         db.prepare("UPDATE transcripts SET summary = ?, updated_at = datetime('now') WHERE id = ?").run(summary, id);
         res.json(getTranscriptWithTags(db, id));
       } catch (err) {
@@ -284,7 +284,7 @@ export function createServer(): Promise<number> {
       try {
         const cleaned = await callGroq(apiKey, model,
           "Remove filler words (um, uh, like, you know, basically, literally, actually, right, so, well, I mean, kind of, sort of) and fix minor grammatical issues. Preserve all substantive content and the speaker's tone. Return only the cleaned text.",
-          t.rawText);
+          t.rawText as string);
         db.prepare("UPDATE transcripts SET cleaned_text = ?, updated_at = datetime('now') WHERE id = ?").run(cleaned, id);
         res.json(getTranscriptWithTags(db, id));
       } catch (err) {
@@ -303,7 +303,7 @@ export function createServer(): Promise<number> {
       try {
         const tagsJson = await callGroq(apiKey, model,
           "Return 3-6 relevant tags as a JSON array of short lowercase strings (1-3 words each). Return only valid JSON array, no other text. Example: [\"meeting notes\",\"project planning\"]",
-          t.cleanedText ?? t.rawText);
+          (t.cleanedText ?? t.rawText) as string);
         const tagNames: string[] = JSON.parse(tagsJson.match(/\[.*?\]/s)?.[0] ?? tagsJson);
         const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#14b8a6"];
         const tagIds: number[] = [];
