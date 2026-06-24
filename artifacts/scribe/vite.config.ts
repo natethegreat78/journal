@@ -139,6 +139,17 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      // framer-motion v12 depends on motion-utils and motion-dom but pnpm's
+      // strict hoisting means they're not visible at the workspace root.
+      // Alias them directly to their dist files so Vite's optimizer can find them.
+      "motion-utils": path.resolve(
+        import.meta.dirname,
+        "../../node_modules/.pnpm/motion-utils@12.36.0/node_modules/motion-utils/dist/cjs/index.js"
+      ),
+      "motion-dom": path.resolve(
+        import.meta.dirname,
+        "../../node_modules/.pnpm/motion-dom@12.38.0/node_modules/motion-dom/dist/es/index.mjs"
+      ),
     },
     dedupe: ["react", "react-dom"],
   },
