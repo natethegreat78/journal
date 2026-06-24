@@ -121,16 +121,10 @@ export function DownloadPage() {
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
               className="gap-2"
-              onClick={() => window.open("https://github.com/natethegreat78/transciber/releases/latest/download/Journal.dmg", "_blank")}
+              onClick={() => window.open("https://github.com/natethegreat78/transciber/releases/latest", "_blank")}
             >
               <Apple className="w-4 h-4" />
               Download .dmg
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => window.open("https://github.com/natethegreat78/transciber/releases/latest", "_blank")}
-            >
-              All releases
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
