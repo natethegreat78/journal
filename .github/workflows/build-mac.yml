@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
 
     steps:
       - name: Checkout
@@ -30,6 +30,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Build app icon
+        run: |
+          brew install librsvg
+          mkdir -p artifacts/scribe/build
+          rsvg-convert -w 1024 -h 1024 artifacts/scribe/build/icon.svg -o artifacts/scribe/build/icon.png
+          mkdir -p /tmp/Journal.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size artifacts/scribe/build/icon.png --out /tmp/Journal.iconset/icon_${size}x${size}.png
+            sips -z $((size*2)) $((size*2)) artifacts/scribe/build/icon.png --out /tmp/Journal.iconset/icon_${size}x${size}@2x.png
+          done
+          iconutil -c icns -o artifacts/scribe/build/icon.icns /tmp/Journal.iconset
+          echo "Icon built: $(ls -lh artifacts/scribe/build/icon.icns)"
+
       - name: Build DMG
         run: pnpm --filter @workspace/scribe run electron:build
 
@@ -43,8 +56,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Journal 1.0.0
+          tag_name: v1.0.1
+          name: Journal 1.0.1
           draft: false
           prerelease: false
           token: ${{ secrets.GH_PUSH_TOKEN }}
