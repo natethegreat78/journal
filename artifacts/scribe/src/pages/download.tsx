@@ -119,12 +119,14 @@ export function DownloadPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              className="gap-2"
-              onClick={() => window.open("https://github.com/natethegreat78/journal/releases/latest", "_blank")}
-            >
-              <Apple className="w-4 h-4" />
-              Download .dmg
+            <Button asChild className="gap-2">
+              <a
+                href="https://github.com/natethegreat78/journal/releases/latest/download/Journal-1.0.0.dmg"
+                download
+              >
+                <Apple className="w-4 h-4" />
+                Download .dmg
+              </a>
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
