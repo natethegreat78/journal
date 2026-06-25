@@ -47,6 +47,7 @@ jobs:
           name: Journal 1.0.0
           draft: false
           prerelease: false
+          token: ${{ secrets.GH_PUSH_TOKEN }}
           files: |
             artifacts/scribe/dist/release/*.dmg
             artifacts/scribe/dist/release/*.zip
