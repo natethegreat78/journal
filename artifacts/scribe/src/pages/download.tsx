@@ -113,7 +113,7 @@ export function DownloadPage() {
           <div className="rounded-lg bg-secondary/50 border border-border/50 p-4 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Requirements</p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• macOS on Intel (x64) — Apple Silicon via Rosetta</li>
+              <li>• Apple Silicon Mac (M1 or later)</li>
               <li>• Chrome or any Chromium browser for recording</li>
             </ul>
           </div>
@@ -128,6 +128,19 @@ export function DownloadPage() {
                 Download .dmg
               </a>
             </Button>
+          </div>
+
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 space-y-2">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wide">First launch</p>
+            <p className="text-sm text-muted-foreground">
+              macOS may block the app on first open since it isn't code-signed. If you see <em>"damaged and can't be opened"</em>, run this once in Terminal after dragging Journal to your Applications folder:
+            </p>
+            <pre className="text-xs bg-black/10 dark:bg-white/10 rounded px-3 py-2 font-mono select-all">
+              xattr -cr /Applications/Journal.app
+            </pre>
+            <p className="text-sm text-muted-foreground">
+              Then double-click Journal normally — you won't need to do this again.
+            </p>
           </div>
           <p className="text-xs text-muted-foreground">
             Build it yourself: see{" "}
