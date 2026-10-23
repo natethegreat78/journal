@@ -31,7 +31,6 @@ async function buildAll() {
       "*.node",
       "drizzle-orm",
       "drizzle-orm/*",
-      "drizzle-zod",
       "sharp",
       "better-sqlite3",
       "sqlite3",

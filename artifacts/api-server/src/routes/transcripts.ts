@@ -61,10 +61,12 @@ router.get("/transcripts", async (req, res) => {
           .where(eq(transcriptTagsTable.tagId, tagRow[0].id));
         transcriptIds = links.map((l) => l.transcriptId);
         if (transcriptIds.length === 0) {
-          return res.json([]);
+          res.json([]);
+          return;
         }
       } else {
-        return res.json([]);
+        res.json([]);
+        return;
       }
     }
 
@@ -110,7 +112,10 @@ router.post("/transcripts", async (req, res) => {
       tagIds?: number[];
     };
 
-    if (!rawText) return res.status(400).json({ error: "rawText is required" });
+    if (!rawText) {
+      res.status(400).json({ error: "rawText is required" });
+      return;
+    }
 
     const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length;
     const autoTitle = title ?? rawText.trim().split(/\s+/).slice(0, 6).join(" ") + (rawText.trim().split(/\s+/).length > 6 ? "..." : "");
@@ -173,10 +178,16 @@ router.get("/transcripts/stats", async (_req, res) => {
 
 router.post("/transcripts/transcribe", upload.single("audio"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No audio file provided" });
+    if (!req.file) {
+      res.status(400).json({ error: "No audio file provided" });
+      return;
+    }
 
     const apiKey = await getSetting("groqApiKey");
-    if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add one in Settings." });
+    if (!apiKey) {
+      res.status(400).json({ error: "No OpenAI API key configured. Please add one in Settings." });
+      return;
+    }
 
     const form = new FormData();
     const ext = req.file.mimetype.includes("webm") ? "webm" : req.file.mimetype.includes("mp4") ? "mp4" : "webm";
@@ -193,7 +204,8 @@ router.post("/transcripts/transcribe", upload.single("audio"), async (req, res) 
     if (!whisperRes.ok) {
       const errText = await whisperRes.text();
       logger.error({ status: whisperRes.status, errText }, "Whisper API error");
-      return res.status(502).json({ error: `Transcription failed: ${errText}` });
+      res.status(502).json({ error: `Transcription failed: ${errText}` });
+      return;
     }
 
     const text = (await whisperRes.text()).trim();
@@ -208,7 +220,10 @@ router.get("/transcripts/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const result = await getTranscriptWithTags(id);
-    if (!result) return res.status(404).json({ error: "Not found" });
+    if (!result) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(result);
   } catch (err) {
     logger.error({ err }, "Error fetching transcript");
@@ -248,7 +263,10 @@ router.patch("/transcripts/:id", async (req, res) => {
     }
 
     const result = await getTranscriptWithTags(id);
-    if (!result) return res.status(404).json({ error: "Not found" });
+    if (!result) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(result);
   } catch (err) {
     logger.error({ err }, "Error updating transcript");
@@ -271,10 +289,16 @@ router.post("/transcripts/:id/summarize", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const transcript = await getTranscriptWithTags(id);
-    if (!transcript) return res.status(404).json({ error: "Not found" });
+    if (!transcript) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     const apiKey = await getSetting("groqApiKey");
-    if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+    if (!apiKey) {
+      res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      return;
+    }
 
     const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
     const text = transcript.cleanedText ?? transcript.rawText;
@@ -299,10 +323,16 @@ router.post("/transcripts/:id/cleanup", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const transcript = await getTranscriptWithTags(id);
-    if (!transcript) return res.status(404).json({ error: "Not found" });
+    if (!transcript) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     const apiKey = await getSetting("groqApiKey");
-    if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+    if (!apiKey) {
+      res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      return;
+    }
 
     const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
 
@@ -326,10 +356,16 @@ router.post("/transcripts/:id/autotag", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const transcript = await getTranscriptWithTags(id);
-    if (!transcript) return res.status(404).json({ error: "Not found" });
+    if (!transcript) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
 
     const apiKey = await getSetting("groqApiKey");
-    if (!apiKey) return res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+    if (!apiKey) {
+      res.status(400).json({ error: "No OpenAI API key configured. Please add it in Settings." });
+      return;
+    }
 
     const model = (await getSetting("groqModel")) ?? "llama-3.3-70b-versatile";
     const text = transcript.cleanedText ?? transcript.rawText;

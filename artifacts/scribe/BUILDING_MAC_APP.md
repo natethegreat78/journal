@@ -13,9 +13,12 @@ The AI summarization model works the same way: downloaded once, cached locally, 
 | Tool | Download |
 |------|----------|
 | Mac Intel (x86_64) | — |
-| Node.js 20+ | https://nodejs.org |
-| pnpm | `npm install -g pnpm` |
+| Node.js 24+ | https://nodejs.org |
+| pnpm 10.26.1 | `npm install -g pnpm@10.26.1` |
 | Xcode Command Line Tools | `xcode-select --install` |
+
+Electron 45 requires macOS Ventura (13) or newer. Native build dependencies for
+both Intel and Apple Silicon must remain enabled in the workspace configuration.
 
 ## Build steps
 
@@ -27,7 +30,7 @@ In Replit, click **⋮ → Download as zip**, then unzip it somewhere on your Ma
 
 ```bash
 cd /path/to/project
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ### 3. Build the DMG

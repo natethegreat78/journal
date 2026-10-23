@@ -18,7 +18,10 @@ router.get("/tags", async (_req, res) => {
 router.post("/tags", async (req, res) => {
   try {
     const { name, color } = req.body as { name: string; color?: string };
-    if (!name) return res.status(400).json({ error: "name is required" });
+    if (!name) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
 
     const inserted = await db.insert(tagsTable).values({
       name: name.toLowerCase().trim(),
