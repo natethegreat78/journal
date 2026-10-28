@@ -2,7 +2,8 @@ import { pipeline, env } from "@huggingface/transformers";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
-(env.backends.onnx.wasm as { wasmPaths?: string }).wasmPaths = "/ort/";
+(env.backends.onnx.wasm as { wasmPaths?: string }).wasmPaths =
+  `${import.meta.env.BASE_URL}ort/${import.meta.env.VITE_ONNX_RUNTIME_VERSION}/`;
 
 type SummarizePipeline = Awaited<ReturnType<typeof pipeline<"summarization">>>;
 

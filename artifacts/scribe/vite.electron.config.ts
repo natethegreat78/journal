@@ -10,10 +10,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { localOnnxRuntime } from "./build-tools/onnx-runtime";
 
 export default defineConfig({
   base: "/",
-  plugins: [react(), tailwindcss()],
+  plugins: [localOnnxRuntime(), react(), tailwindcss()],
   optimizeDeps: {
     exclude: ["@huggingface/transformers"],
   },

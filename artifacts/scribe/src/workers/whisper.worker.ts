@@ -3,9 +3,10 @@ import { pipeline, env } from "@huggingface/transformers";
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-// Serve ONNX Runtime WASM files locally instead of fetching from CDN.
-// This avoids network failures in restricted environments (e.g. Replit preview).
-(env.backends.onnx.wasm as { wasmPaths?: string }).wasmPaths = "/ort/";
+// The build plugin serves the exact runtime version used by Transformers.
+// Do not use the legacy, unversioned public/ort binaries.
+(env.backends.onnx.wasm as { wasmPaths?: string }).wasmPaths =
+  `${import.meta.env.BASE_URL}ort/${import.meta.env.VITE_ONNX_RUNTIME_VERSION}/`;
 
 type ASRPipeline = Awaited<ReturnType<typeof pipeline<"automatic-speech-recognition">>>;
 

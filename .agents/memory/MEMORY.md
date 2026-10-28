@@ -1,4 +1,4 @@
 - [Web Speech API in Replit](web-speech-api-replit.md) — Chrome's built-in SpeechRecognition fails with "network" error in Replit's proxied iframe; always use MediaRecorder hook instead.
-- [Local Whisper transcription](local-whisper.md) — transcription runs in-browser via @huggingface/transformers Web Worker; no API key needed; audio decoded to 16kHz Float32Array in main thread before transfer to worker.
+- [Local Whisper transcription](local-whisper.md) — preserve local inference; keep JS/WASM versions aligned and verify model-ready plus actual speech, not only downloads/builds.
 - [Dependency remediation](dependency-remediation.md) — successful recursive updates can leave vulnerable transitive versions; verify the resolved lockfile with an audit.
 - [Release provenance](release-provenance.md) — retry CI against the original tagged source; use the per-run GitHub token for same-repository release uploads.

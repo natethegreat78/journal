@@ -1,22 +1,32 @@
 ---
 name: Local Whisper transcription
-description: How local in-browser Whisper inference is wired up in Scribe
+description: Local transcription privacy, runtime compatibility, and inference verification constraints
 ---
 
-## Rule
-Transcription runs entirely in the browser via `@huggingface/transformers` in a Web Worker. No API key required. Audio never leaves the device.
+## Local transcription
+Keep core transcription fully on-device and usable without an API key.
 
 **Why:** User chose fully local transcription to eliminate API key dependency for the core recording feature.
 
-## How to apply
-- Worker: `artifacts/scribe/src/workers/whisper.worker.ts` — loads the ASR pipeline, receives Float32Array, returns text
-- Hook: `artifacts/scribe/src/hooks/use-whisper.ts` — manages worker lifecycle, audio decoding, model loading state, download progress
-- Audio decoding happens in the **main thread** (not the worker) using `AudioContext` + `OfflineAudioContext` to resample to 16kHz before transferring Float32Array to the worker. Workers do not have `AudioContext`.
-- Model choice is stored in `localStorage` under key `scribe:whisper-model`; options: `Xenova/whisper-tiny`, `Xenova/whisper-base`, `Xenova/whisper-small`
-- Vite config excludes `@huggingface/transformers` from dep optimisation (`optimizeDeps.exclude`)
-- Groq API key is now **only** needed for optional AI features (summarize, cleanup, autotag) — not for recording/transcription
+**How to apply:** Do not replace local transcription with a cloud provider merely to improve accuracy or speed; cloud transcription must remain an explicit opt-in.
 
-## Gotchas
-- `OfflineAudioContext` is **not** available in Web Workers — always decode audio in the main thread
-- On first use the model is downloaded from Hugging Face and cached in IndexedDB; subsequent loads are instant
-- `useMediaRecorder` now accepts a `transcribeFn: (blob: Blob) => Promise<string>` parameter — the recorder page wires in `transcribe` from `useWhisper`
+## Runtime compatibility
+The ONNX JavaScript loader and locally served WASM/module files must come from the exact same installed dependency version, with versioned URLs.
+
+**Why:** Updating Transformers alone does not update copied runtime binaries. Old local WASM can retain the quantized Whisper `Missing required scale` / `MatMulNBits` optimizer bug even when the installed library includes the upstream fix. Browser caching can retain those stale files too.
+
+**How to apply:** Resolve runtime assets from Transformers' installed ONNX dependency for development and both web/desktop builds; do not restore hand-copied, unversioned binaries.
+
+## Verify inference, not just download
+Changes to the model, precision, or inference runtime require a real browser model-ready event and a successful sample transcription before delivery.
+
+**Why:** A passing build, advertised model-file availability, and a screenshot saying “Preparing model” do not prove session creation or inference works.
+
+**How to apply:** Keep browser checks narrowly focused on actual model loading and known speech through the real worker; do not mock ready/results or modify saved user transcripts.
+
+## Audio decoding boundary
+Decode and resample audio on the main thread before sending samples to a Web Worker.
+
+**Why:** Workers do not provide `AudioContext` or `OfflineAudioContext`.
+
+**How to apply:** Use the worker for inference, not Web Audio decoding.

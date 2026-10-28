@@ -1,10 +1,10 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
-import { readFileSync, existsSync } from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { localOnnxRuntime } from "./build-tools/onnx-runtime";
 
 const rawPort = process.env.PORT;
 
@@ -28,40 +28,10 @@ if (!basePath) {
   );
 }
 
-/**
- * Serves files from public/ort/ at /ort/ via raw middleware (before Vite's
- * module resolver), so dynamic import('/ort/*.mjs') in the ONNX Runtime Web
- * worker doesn't trigger Vite's "public dir cannot be imported" error.
- */
-function ortStaticServe(): Plugin {
-  const ortDir = path.resolve(import.meta.dirname, "public", "ort");
-  return {
-    name: "ort-static-serve",
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const url = req.url ?? "";
-        if (!url.startsWith("/ort/")) return next();
-        const filename = url.slice("/ort/".length).split("?")[0];
-        const filePath = path.join(ortDir, filename);
-        if (!existsSync(filePath)) return next();
-        const isWasm = filename.endsWith(".wasm");
-        const isMjs = filename.endsWith(".mjs");
-        if (!isWasm && !isMjs) return next();
-        const content = readFileSync(filePath);
-        res.setHeader("Content-Type", isWasm ? "application/wasm" : "text/javascript; charset=utf-8");
-        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Cache-Control", "max-age=86400");
-        res.end(content);
-      });
-    },
-  };
-}
-
 export default defineConfig({
   base: basePath,
   plugins: [
-    ortStaticServe(),
+    localOnnxRuntime(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
