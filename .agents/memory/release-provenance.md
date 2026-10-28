@@ -20,3 +20,9 @@ Mac releases must provide both Intel and Apple Silicon downloads.
 **Why:** The user explicitly requires an Intel Mac version alongside Apple Silicon.
 
 **How to apply:** Preserve both architectures when updating releases and the download page. Build and check native dependencies on matching runners rather than assuming an Apple Silicon installer works on Intel.
+
+Electron-builder's configured target architecture lists can override CLI architecture flags unless explicit target names are passed.
+
+**Why:** An architecture-specific job silently built both architectures, and a generic app-directory search selected the wrong executable for validation.
+
+**How to apply:** Pass named DMG/ZIP targets with the requested architecture and validate the exact architecture-specific app directory. Do not assume an architecture flag alone limits the output.

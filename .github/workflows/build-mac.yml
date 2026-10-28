@@ -94,14 +94,21 @@ jobs:
           echo "Icon built: $(ls -lh artifacts/scribe/build/icon.icns)"
 
       - name: Build DMG
-        run: pnpm --filter @workspace/scribe run electron:build --${{ matrix.arch }}
+        run: |
+          pnpm --filter @workspace/scribe exec vite build --config vite.electron.config.ts
+          pnpm --filter @workspace/scribe exec tsc -p electron/tsconfig.json
+          pnpm --filter @workspace/scribe exec electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
 
       - name: Verify packaged architecture and SQLite
         env:
           EXPECTED_ARCH: ${{ matrix.arch }}
         run: |
-          app=$(find artifacts/scribe/dist/release -maxdepth 2 -name Journal.app -type d -print -quit)
-          test -n "$app"
+          case "$EXPECTED_ARCH" in
+            arm64) app=artifacts/scribe/dist/release/mac-arm64/Journal.app ;;
+            x64) app=artifacts/scribe/dist/release/mac/Journal.app ;;
+            *) echo "Unsupported architecture"; exit 1 ;;
+          esac
+          test -d "$app"
           ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Journal" -e '
             if (process.arch !== process.env.EXPECTED_ARCH) {
               throw new Error(`Expected ${process.env.EXPECTED_ARCH}, got ${process.arch}`);
@@ -114,6 +121,7 @@ jobs:
             if (result.ok !== 1) throw new Error("SQLite smoke test failed");
             db.close();
             console.log(`Packaged ${process.arch} Electron and SQLite verified`);
+            process.exit(0);
           ' "$PWD/$app/Contents/Resources/app.asar/package.json"
 
       - name: Name architecture-specific downloads

@@ -9,7 +9,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "electron:build": "vite build --config vite.electron.config.ts && tsc -p electron/tsconfig.json && electron-builder --mac --publish never",
+    "electron:build": "vite build --config vite.electron.config.ts && tsc -p electron/tsconfig.json && electron-builder --mac dmg zip --publish never",
     "electron:dev": "concurrently \"vite --config vite.config.ts\" \"wait-on http://localhost:5173 && electron .\""
   },
   "build": {
