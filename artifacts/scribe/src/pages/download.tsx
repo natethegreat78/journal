@@ -100,7 +100,7 @@ export function DownloadPage() {
             </div>
             <div>
               <CardTitle className="text-base">Mac Desktop App</CardTitle>
-              <CardDescription>Native Electron app for Mac Intel — fully local, no cloud</CardDescription>
+              <CardDescription>Native Electron app for Apple Silicon Macs — fully local, no cloud</CardDescription>
             </div>
           </div>
         </CardHeader>
