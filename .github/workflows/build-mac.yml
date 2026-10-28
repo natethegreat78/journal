@@ -73,7 +73,7 @@ jobs:
           name: Journal ${{ github.event.inputs.release_tag || github.ref_name }}
           draft: false
           prerelease: false
-          token: ${{ secrets.GH_PUSH_TOKEN }}
+          token: ${{ github.token }}
           files: |
             artifacts/scribe/dist/release/*.dmg
             artifacts/scribe/dist/release/*.zip
