@@ -14,3 +14,9 @@ Use GitHub Actions' per-run token with explicit contents-write permission for up
 **Why:** A saved token can expire and block publishing even after the native build succeeds.
 
 **How to apply:** Keep release-upload authorization inside the workflow's scoped permissions; do not introduce a long-lived token dependency for same-repository releases.
+
+Mac releases must provide both Intel and Apple Silicon downloads.
+
+**Why:** The user explicitly requires an Intel Mac version alongside Apple Silicon.
+
+**How to apply:** Preserve both architectures when updating releases and the download page. Build and check native dependencies on matching runners rather than assuming an Apple Silicon installer works on Intel.

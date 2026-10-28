@@ -1,4 +1,4 @@
-name: Build Mac DMG
+name: Build Mac Installers
 
 on:
   push:
@@ -18,7 +18,20 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    name: Build ${{ matrix.download_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            download_name: Apple-Silicon
+          - arch: x64
+            runner: macos-15-intel
+            download_name: Intel
+    runs-on: ${{ matrix.runner }}
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
 
     steps:
       - name: Resolve release tag
@@ -81,31 +94,74 @@ jobs:
           echo "Icon built: $(ls -lh artifacts/scribe/build/icon.icns)"
 
       - name: Build DMG
-        run: pnpm --filter @workspace/scribe run electron:build
+        run: pnpm --filter @workspace/scribe run electron:build --${{ matrix.arch }}
 
-      - name: Rename artifacts (strip arch suffix)
+      - name: Verify packaged architecture and SQLite
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
         run: |
+          app=$(find artifacts/scribe/dist/release -maxdepth 2 -name Journal.app -type d -print -quit)
+          test -n "$app"
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Journal" -e '
+            if (process.arch !== process.env.EXPECTED_ARCH) {
+              throw new Error(`Expected ${process.env.EXPECTED_ARCH}, got ${process.arch}`);
+            }
+            const { createRequire } = require("node:module");
+            const appRequire = createRequire(process.argv[1]);
+            const Database = appRequire("better-sqlite3");
+            const db = new Database(":memory:");
+            const result = db.prepare("SELECT 1 AS ok").get();
+            if (result.ok !== 1) throw new Error("SQLite smoke test failed");
+            db.close();
+            console.log(`Packaged ${process.arch} Electron and SQLite verified`);
+          ' "$PWD/$app/Contents/Resources/app.asar/package.json"
+
+      - name: Name architecture-specific downloads
+        env:
+          ARCH: ${{ matrix.arch }}
+          DOWNLOAD_NAME: ${{ matrix.download_name }}
+        run: |
+          set -euo pipefail
           cd artifacts/scribe/dist/release
-          for f in *-arm64.dmg *-arm64-mac.zip; do
-            [ -f "$f" ] && mv "$f" "${f/-arm64/}" && echo "Renamed $f"
-          done
+          mv "Journal-$ARCH.dmg" "Journal-$DOWNLOAD_NAME.dmg"
+          mv "Journal-$ARCH.zip" "Journal-$DOWNLOAD_NAME.zip"
           ls -lh
 
-      - name: Upload DMG as artifact
+      - name: Upload installers as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Journal-dmg
-          path: artifacts/scribe/dist/release/*.dmg
+          name: Journal-${{ matrix.arch }}
+          path: |
+            artifacts/scribe/dist/release/*.dmg
+            artifacts/scribe/dist/release/*.zip
+          if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Publish both Mac builds
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both architectures
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Journal-*
+          path: release
+          merge-multiple: true
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          name: Journal ${{ steps.release.outputs.tag }}
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: Journal ${{ needs.build.outputs.tag }}
           draft: false
           prerelease: false
           token: ${{ github.token }}
+          fail_on_unmatched_files: true
+          body: |
+            Native Mac downloads for both Apple Silicon (M1 or later) and Intel processors.
+            Requires macOS Ventura (13) or newer. Includes the local Whisper runtime compatibility fix.
+            Choose the matching DMG installer, or the ZIP alternative.
           files: |
-            artifacts/scribe/dist/release/*.dmg
-            artifacts/scribe/dist/release/*.zip
+            release/*.dmg
+            release/*.zip

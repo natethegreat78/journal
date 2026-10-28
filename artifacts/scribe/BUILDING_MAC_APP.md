@@ -1,6 +1,6 @@
-# Building Journal for Mac Intel
+# Building Journal for Mac (Intel and Apple Silicon)
 
-Journal is a local-first transcription app. This guide covers building the `.dmg` installer for Mac Intel (x86_64). The desktop app uses SQLite instead of PostgreSQL, so all your data stays entirely on your machine.
+Journal is a local-first transcription app. This guide covers native `.dmg` installers for Intel (x86_64) and Apple Silicon (arm64). The desktop app uses SQLite instead of PostgreSQL, so all your data stays entirely on your machine.
 
 ## How offline transcription works
 
@@ -12,7 +12,7 @@ The AI summarization model works the same way: downloaded once, cached locally, 
 
 | Tool | Download |
 |------|----------|
-| Mac Intel (x86_64) | — |
+| Intel or Apple Silicon Mac | Build on the matching architecture |
 | Node.js 24+ | https://nodejs.org |
 | pnpm 10.26.1 | `npm install -g pnpm@10.26.1` |
 | Xcode Command Line Tools | `xcode-select --install` |
@@ -37,7 +37,11 @@ pnpm install --frozen-lockfile
 
 ```bash
 cd artifacts/scribe
-pnpm run electron:build
+# On an Intel Mac:
+pnpm run electron:build --x64
+
+# On an Apple Silicon Mac:
+pnpm run electron:build --arm64
 ```
 
 This single command does three things in sequence:
@@ -45,17 +49,19 @@ This single command does three things in sequence:
 2. **Compiles the Electron main process** TypeScript → JavaScript
 3. **Packages everything** into a `.dmg` and `.zip` in `artifacts/scribe/dist/release/`
 
-The output file will be: `dist/release/Journal-1.0.0.dmg`
+Local output files are `dist/release/Journal-x64.dmg` or `Journal-arm64.dmg`, with matching ZIPs.
+GitHub builds both architectures on matching native runners and publishes stable download names:
+`Journal-Intel.dmg` and `Journal-Apple-Silicon.dmg`.
 
 ### 4. Install
 
-Open `Journal-1.0.0.dmg` → drag Journal to your Applications folder → eject the DMG.
+Open the DMG for your processor → drag Journal to your Applications folder → eject the DMG.
 
 ## First launch
 
 1. Open Journal from Applications.
 2. **Grant microphone access** when macOS asks — required for recording.
-3. The app immediately starts downloading the default Whisper model (Tiny English, ~40 MB). You'll see a "Preparing offline model…" indicator in the bottom-left of the sidebar.
+3. The app immediately starts downloading the default Whisper model (Small English, ~244 MB). You'll see a "Preparing offline model…" indicator in the bottom-left of the sidebar.
 4. Once the progress bar completes and shows ✓, transcription is ready. **All future launches are fully offline.**
 
 ## Choosing a different transcription model
@@ -64,11 +70,11 @@ In the app, go to **Settings → Transcription Models**. Six Whisper variants ar
 
 | Model | Size | Best for |
 |-------|------|----------|
-| Tiny (English) | ~40 MB | Quick English notes — default |
+| Tiny (English) | ~40 MB | Quick English notes |
 | Tiny (Multilingual) | ~40 MB | 99 languages, same speed |
 | Base (English) | ~80 MB | Better accuracy |
 | Base (Multilingual) | ~80 MB | Accurate, 99 languages |
-| Small (English) | ~244 MB | High accuracy |
+| Small (English) | ~244 MB | High accuracy — default |
 | Small (Multilingual) | ~244 MB | Best quality, all languages |
 
 Click **Download & Use** on any model. It downloads once and is cached permanently.

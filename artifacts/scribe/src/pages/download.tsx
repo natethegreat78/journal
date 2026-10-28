@@ -100,7 +100,7 @@ export function DownloadPage() {
             </div>
             <div>
               <CardTitle className="text-base">Mac Desktop App</CardTitle>
-              <CardDescription>Native Electron app for Apple Silicon Macs — fully local, no cloud</CardDescription>
+              <CardDescription>Native Electron app for Apple Silicon and Intel Macs — fully local, no cloud</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -113,22 +113,35 @@ export function DownloadPage() {
           <div className="rounded-lg bg-secondary/50 border border-border/50 p-4 space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Requirements</p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Apple Silicon Mac (M1 or later)</li>
-              <li>• Chrome or any Chromium browser for recording</li>
+              <li>• Apple Silicon (M1 or later) or Intel Mac</li>
+              <li>• macOS Ventura (13) or newer</li>
             </ul>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
             <Button asChild className="gap-2">
               <a
-                href="https://github.com/natethegreat78/journal/releases/latest/download/Journal-1.0.3.dmg"
+                href="https://github.com/natethegreat78/journal/releases/latest/download/Journal-Apple-Silicon.dmg"
                 download
               >
                 <Apple className="w-4 h-4" />
-                Download .dmg
+                Download for Apple Silicon
+              </a>
+            </Button>
+            <Button asChild variant="outline" className="gap-2">
+              <a
+                href="https://github.com/natethegreat78/journal/releases/latest/download/Journal-Intel.dmg"
+                download
+              >
+                <Monitor className="w-4 h-4" />
+                Download for Intel
               </a>
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Not sure which to choose? Open Apple menu → About This Mac.
+            Choose Apple Silicon if it lists an Apple chip, or Intel if it lists an Intel processor.
+          </p>
 
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 space-y-2">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wide">First launch</p>
