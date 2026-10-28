@@ -37,7 +37,7 @@ export const WHISPER_MODELS = [
   {
     id: "onnx-community/whisper-small.en",
     label: "Whisper Small (English)",
-    description: "High accuracy for English. Best balance of quality and size.",
+    description: "Recommended default. Higher accuracy for English; about 244 MB to download.",
     sizeMb: 244,
   },
   {
@@ -59,7 +59,7 @@ export function getStoredModel(): WhisperModelId {
       return stored as WhisperModelId;
     }
   } catch {}
-  return "onnx-community/whisper-tiny.en";
+  return "onnx-community/whisper-small.en";
 }
 
 export function setStoredModel(model: WhisperModelId) {

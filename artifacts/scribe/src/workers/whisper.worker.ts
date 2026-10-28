@@ -16,7 +16,7 @@ async function getTranscriber(model: string): Promise<ASRPipeline> {
   if (transcriber && loadedModel === model) return transcriber;
 
   transcriber = await pipeline("automatic-speech-recognition", model, {
-    dtype: "fp32",
+    dtype: "q8",
     device: "wasm",
     progress_callback: (info: unknown) => {
       self.postMessage({ type: "progress", info });
@@ -33,7 +33,7 @@ self.addEventListener("message", async (event: MessageEvent) => {
     model?: string;
   };
 
-  const modelId = model ?? "Xenova/whisper-tiny";
+  const modelId = model ?? "onnx-community/whisper-small.en";
 
   if (type === "load") {
     try {
